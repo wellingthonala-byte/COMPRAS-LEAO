@@ -1,5 +1,6 @@
 import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck } from 'lucide-react';
 import { PurchaseRequest, Status } from '../../types';
+import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
 import { Avatar } from '../UI/Avatar';
 import { STATUS_ORDER } from '../../data/mockData';
@@ -18,7 +19,7 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Comprado': <Package size={14} />,
   'Em Rota': <Truck size={14} />,
   'Em Serviço': <Edit3 size={14} />,
-  'Disponível p/ Retirada': <ChevronRight size={14} />,
+  'Disponível para Retirada': <ChevronRight size={14} />,
   'Finalizado': <ChevronRight size={14} />,
 };
 
@@ -95,7 +96,7 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onEdit }
                 <div>
                   <p className="text-xs text-slate-400">Solicitante</p>
                   <div className="flex items-center gap-1.5 mt-0.5">
-                    <Avatar initials={request.requesterInitials} color={request.requesterColor} size="sm" />
+                    <Avatar initials={request.requesterInitials} color={colorFromInitials(request.requesterInitials)} size="sm" />
                     <p className="text-sm font-medium text-slate-800">{request.requester}</p>
                   </div>
                 </div>

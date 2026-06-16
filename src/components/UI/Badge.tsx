@@ -13,7 +13,7 @@ const statusConfig: Record<Status, { label: string; className: string }> = {
   'Comprado': { label: 'Comprado', className: 'bg-sky-100 text-sky-700' },
   'Em Rota': { label: 'Em Rota', className: 'bg-indigo-100 text-indigo-700' },
   'Em Serviço': { label: 'Em Serviço', className: 'bg-purple-100 text-purple-700' },
-  'Disponível p/ Retirada': { label: 'Disponível', className: 'bg-teal-100 text-teal-700' },
+  'Disponível para Retirada': { label: 'Disponível', className: 'bg-teal-100 text-teal-700' },
   'Finalizado': { label: 'Finalizado', className: 'bg-emerald-100 text-emerald-700' },
 };
 

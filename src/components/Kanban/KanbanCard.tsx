@@ -2,6 +2,7 @@ import { Calendar, Package, Building2 } from 'lucide-react';
 import { PurchaseRequest } from '../../types';
 import { Avatar } from '../UI/Avatar';
 import { PriorityBadge } from '../UI/Badge';
+import { colorFromInitials } from '../../utils/colors';
 
 interface KanbanCardProps {
   request: PurchaseRequest;
@@ -45,7 +46,7 @@ export function KanbanCard({ request, onClick }: KanbanCardProps) {
 
       <div className="flex items-center justify-between pt-3 border-t border-slate-100">
         <div className="flex items-center gap-2">
-          <Avatar initials={request.requesterInitials} color={request.requesterColor} size="sm" />
+          <Avatar initials={request.requesterInitials} color={colorFromInitials(request.requesterInitials)} size="sm" />
           <span className="text-xs text-slate-600 font-medium">{request.requester.split(' ')[0]}</span>
         </div>
 

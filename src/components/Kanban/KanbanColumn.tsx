@@ -9,7 +9,7 @@ const columnColors: Record<Status, string> = {
   'Comprado': 'bg-sky-500',
   'Em Rota': 'bg-indigo-500',
   'Em Serviço': 'bg-purple-500',
-  'Disponível p/ Retirada': 'bg-teal-500',
+  'Disponível para Retirada': 'bg-teal-500',
   'Finalizado': 'bg-emerald-500',
 };
 
@@ -20,7 +20,7 @@ const columnBg: Record<Status, string> = {
   'Comprado': 'bg-sky-50',
   'Em Rota': 'bg-indigo-50',
   'Em Serviço': 'bg-purple-50',
-  'Disponível p/ Retirada': 'bg-teal-50',
+  'Disponível para Retirada': 'bg-teal-50',
   'Finalizado': 'bg-emerald-50',
 };
 

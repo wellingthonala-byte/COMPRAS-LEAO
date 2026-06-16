@@ -1,6 +1,7 @@
 import { TrendingUp, Package, CheckCircle, AlertTriangle, Clock, Activity } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { mockRequests } from '../data/mockData';
+import { colorFromInitials } from '../utils/colors';
 
 export function DashboardPage() {
   const total = mockRequests.length;
@@ -72,7 +73,7 @@ export function DashboardPage() {
             <div className="space-y-2">
               {recentRequests.map((r) => (
                 <div key={r.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: r.requesterColor }}>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0" style={{ backgroundColor: colorFromInitials(r.requesterInitials) }}>
                     {r.requesterInitials}
                   </div>
                   <div className="flex-1 min-w-0">
