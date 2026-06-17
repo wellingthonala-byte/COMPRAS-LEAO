@@ -35,7 +35,7 @@ export function KanbanColumn({ status, requests, onCardClick }: KanbanColumnProp
   const bgColor = columnBg[status];
 
   return (
-    <div className={`flex-shrink-0 w-72 flex flex-col rounded-2xl ${bgColor} border border-slate-200`}>
+    <div className={`flex-shrink-0 w-72 flex flex-col rounded-2xl ${bgColor} border border-slate-200 self-start`}>
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
         <div className="flex items-center gap-2">
           <span className={`w-2.5 h-2.5 rounded-full ${dotColor}`} />
@@ -49,7 +49,7 @@ export function KanbanColumn({ status, requests, onCardClick }: KanbanColumnProp
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-3 space-y-3 max-h-[calc(100vh-13rem)]">
+      <div className="p-3 space-y-3">
         {requests.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-slate-300">
             <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-2">

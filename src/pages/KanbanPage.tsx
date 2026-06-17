@@ -94,9 +94,9 @@ export function KanbanPage() {
         requests={requests}
       />
 
-      <div className="flex-1 overflow-hidden pt-16">
+      <div className="flex flex-col overflow-hidden pt-16" style={{ height: '100vh' }}>
         {/* Filter bar */}
-        <div className="flex items-center gap-3 px-6 py-3 bg-white border-b border-slate-200">
+        <div className="flex-shrink-0 flex items-center gap-3 px-6 py-3 bg-white border-b border-slate-200">
           <Filter size={14} className="text-slate-400" />
           <select
             value={filterPriority}
@@ -128,8 +128,8 @@ export function KanbanPage() {
         </div>
 
         {/* Board */}
-        <div className="overflow-x-auto h-full">
-          <div className="flex gap-4 p-6 h-full min-w-max">
+        <div className="flex-1 overflow-auto">
+          <div className="flex gap-4 p-6 min-w-max" style={{ minHeight: '100%' }}>
             {STATUS_ORDER.map((status) => (
               <KanbanColumn
                 key={status}
