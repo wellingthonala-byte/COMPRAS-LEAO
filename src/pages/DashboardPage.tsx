@@ -1,9 +1,11 @@
 import { TrendingUp, Package, CheckCircle, AlertTriangle, Clock, Activity } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
-import { mockRequests } from '../data/mockData';
 import { colorFromInitials } from '../utils/colors';
+import { PurchaseRequest } from '../types';
 
-export function DashboardPage() {
+interface DashboardPageProps { requests: PurchaseRequest[] }
+
+export function DashboardPage({ requests: mockRequests }: DashboardPageProps) {
   const total = mockRequests.length;
   const finalized = mockRequests.filter((r) => r.status === 'Finalizado').length;
   const open = mockRequests.filter((r) => r.status !== 'Finalizado').length;

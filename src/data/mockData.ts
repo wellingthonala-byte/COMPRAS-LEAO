@@ -3,7 +3,7 @@ import { PurchaseRequest } from '../types';
 export const mockRequests: PurchaseRequest[] = [
   {
     id: '1',
-    number: '#0241',
+    number: '#017/06/26',
     requester: 'Elias Guilherme',
     requesterInitials: 'EG',
     sector: 'Produção',
@@ -30,7 +30,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '2',
-    number: '#0240',
+    number: '#016/06/26',
     requester: 'Elias Guilherme',
     requesterInitials: 'EG',
     sector: 'Produção',
@@ -47,7 +47,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '3',
-    number: '#0238',
+    number: '#015/06/26',
     requester: 'Alefy Alves',
     requesterInitials: 'AA',
     sector: 'Produção',
@@ -68,7 +68,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '4',
-    number: '#0237',
+    number: '#013/06/26',
     requester: 'Carlos Lima',
     requesterInitials: 'CL',
     sector: 'Manutenção',
@@ -85,7 +85,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '5',
-    number: '#0236',
+    number: '#012/06/26',
     requester: 'Maria Santos',
     requesterInitials: 'MS',
     sector: 'Administrativo',
@@ -103,7 +103,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '6',
-    number: '#0235',
+    number: '#010/06/26',
     requester: 'João Pedro',
     requesterInitials: 'JP',
     sector: 'Manutenção',
@@ -121,7 +121,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '7',
-    number: '#0234',
+    number: '#011/06/26',
     requester: 'Alefy Alves',
     requesterInitials: 'AA',
     sector: 'Manutenção',
@@ -140,7 +140,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '8',
-    number: '#0233',
+    number: '#008/06/26',
     requester: 'Carlos Lima',
     requesterInitials: 'CL',
     sector: 'TI',
@@ -157,7 +157,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '9',
-    number: '#0232',
+    number: '#007/06/26',
     requester: 'Elias Guilherme',
     requesterInitials: 'EG',
     sector: 'Produção',
@@ -179,7 +179,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '10',
-    number: '#0231',
+    number: '#005/06/26',
     requester: 'Maria Santos',
     requesterInitials: 'MS',
     sector: 'Manutenção',
@@ -200,7 +200,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '11',
-    number: '#0230',
+    number: '#004/06/26',
     requester: 'João Pedro',
     requesterInitials: 'JP',
     sector: 'Logística',
@@ -220,7 +220,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '12',
-    number: '#0229',
+    number: '#003/06/26',
     requester: 'Alefy Alves',
     requesterInitials: 'AA',
     sector: 'Manutenção',
@@ -240,7 +240,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '13',
-    number: '#0228',
+    number: '#002/06/26',
     requester: 'Carlos Lima',
     requesterInitials: 'CL',
     sector: 'Manutenção',
@@ -262,7 +262,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '14',
-    number: '#0227',
+    number: '#001/06/26',
     requester: 'Elias Guilherme',
     requesterInitials: 'EG',
     sector: 'Produção',
@@ -285,7 +285,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '15',
-    number: '#0226',
+    number: '#003/05/26',
     requester: 'Maria Santos',
     requesterInitials: 'MS',
     sector: 'Administrativo',
@@ -308,7 +308,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '16',
-    number: '#0225',
+    number: '#002/05/26',
     requester: 'João Pedro',
     requesterInitials: 'JP',
     sector: 'Manutenção',
@@ -330,7 +330,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '17',
-    number: '#0224',
+    number: '#001/05/26',
     requester: 'Alefy Alves',
     requesterInitials: 'AA',
     sector: 'Manutenção',
@@ -352,7 +352,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '18',
-    number: '#0223',
+    number: '#014/06/26',
     requester: 'Carlos Lima',
     requesterInitials: 'CL',
     sector: 'TI',
@@ -369,7 +369,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '19',
-    number: '#0222',
+    number: '#009/06/26',
     requester: 'Maria Santos',
     requesterInitials: 'MS',
     sector: 'RH',
@@ -386,7 +386,7 @@ export const mockRequests: PurchaseRequest[] = [
   },
   {
     id: '20',
-    number: '#0221',
+    number: '#006/06/26',
     requester: 'Elias Guilherme',
     requesterInitials: 'EG',
     sector: 'Produção',

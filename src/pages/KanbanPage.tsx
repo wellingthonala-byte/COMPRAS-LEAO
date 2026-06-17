@@ -3,14 +3,18 @@ import { Filter, X } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { RequestDetailModal } from '../components/Modals/RequestDetailModal';
-import { mockRequests, STATUS_ORDER } from '../data/mockData';
+import { STATUS_ORDER } from '../data/mockData';
 import { PurchaseRequest, Priority, Sector, Status } from '../types';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
 const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
 
-export function KanbanPage() {
-  const [requests, setRequests] = useState<PurchaseRequest[]>(mockRequests);
+interface KanbanPageProps {
+  requests: PurchaseRequest[];
+  setRequests: React.Dispatch<React.SetStateAction<PurchaseRequest[]>>;
+}
+
+export function KanbanPage({ requests, setRequests }: KanbanPageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | ''>('');

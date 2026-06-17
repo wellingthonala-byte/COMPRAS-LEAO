@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
-import { Priority, Sector } from '../types';
+import { Priority, Sector, PurchaseRequest } from '../types';
+import { generateRequestNumber } from '../utils/numbering';
 
 interface ItemForm {
   id: string;
@@ -15,6 +16,11 @@ interface ItemForm {
   observations: string;
 }
 
+interface NewRequestPageProps {
+  requests: PurchaseRequest[];
+  onAdd: (r: PurchaseRequest) => void;
+}
+
 const priorities: Priority[] = ['Não Urgente', 'Urgente', 'Máquina Parada'];
 const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
 const applications = ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'];
@@ -23,7 +29,14 @@ function newItem(n: number): ItemForm {
   return { id: String(n), description: '', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '' };
 }
 
-export function NewRequestPage() {
+function getInitials(name: string): string {
+  const parts = name.trim().split(' ').filter(Boolean);
+  if (parts.length === 0) return '??';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
   const navigate = useNavigate();
   const [requester, setRequester] = useState('');
   const [sector, setSector] = useState<Sector | ''>('');
@@ -40,6 +53,33 @@ export function NewRequestPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const now = new Date().toISOString();
+    const initials = getInitials(requester);
+    const number = generateRequestNumber(now, requests.map((r) => r.number));
+    const newRequest: PurchaseRequest = {
+      id: `req-${Date.now()}`,
+      number,
+      requester,
+      requesterInitials: initials,
+      sector: sector as Sector,
+      priority,
+      status: 'Nova Solicitação',
+      createdAt: now,
+      deliveryForecast: deliveryForecast || now.slice(0, 10),
+      items: items.map((item, idx) => ({
+        id: `item-${Date.now()}-${idx}`,
+        description: item.description,
+        quantity: item.quantity,
+        application: item.application,
+        priority: item.priority,
+        deliveryForecast: item.deliveryForecast || deliveryForecast || now.slice(0, 10),
+        technicalSpec: item.technicalSpec || undefined,
+        observations: item.observations || undefined,
+      })),
+      observations: observations || undefined,
+      history: [{ id: `h-${Date.now()}`, date: now, user: requester, action: 'Solicitação criada', to: 'Nova Solicitação' }],
+    };
+    onAdd(newRequest);
     setSubmitted(true);
     setTimeout(() => navigate('/'), 1500);
   };
