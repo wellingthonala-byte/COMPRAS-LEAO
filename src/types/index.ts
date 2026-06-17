@@ -11,6 +11,7 @@ export interface Item {
   deliveryForecast: string;
   technicalSpec?: string;
   observations?: string;
+  objections?: Objection[];
 }
 
 export interface PurchaseRequest {
@@ -34,6 +35,14 @@ export interface PurchaseRequest {
   approvedBy?: string;
   approvalId?: string;
   approvedAt?: string;
+}
+
+export interface Objection {
+  id: string;
+  date: string;
+  user: string;
+  text: string;
+  resolved: boolean;
 }
 
 export interface HistoryEntry {

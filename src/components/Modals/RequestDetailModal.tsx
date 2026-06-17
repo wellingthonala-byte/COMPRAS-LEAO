@@ -1,4 +1,4 @@
-import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save } from 'lucide-react';
+import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle } from 'lucide-react';
 import { useState } from 'react';
 import { PurchaseRequest, Status } from '../../types';
 import { colorFromInitials } from '../../utils/colors';
@@ -36,6 +36,8 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
   const [approvalError, setApprovalError] = useState('');
 
   const [editingSupplier, setEditingSupplier] = useState(false);
+  const [objectionItemId, setObjectionItemId] = useState<string | null>(null);
+  const [objectionText, setObjectionText] = useState('');
   const [supplierDraft, setSupplierDraft] = useState({
     supplier: request.supplier || '',
     value: request.value !== undefined ? String(request.value) : '',
@@ -44,6 +46,34 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
     deliveryForecast: request.deliveryForecast || '',
     realDeliveryDate: request.realDeliveryDate || '',
   });
+
+  const handleAddObjection = (itemId: string) => {
+    if (!objectionText.trim()) return;
+    const updatedItems = request.items.map((item) => {
+      if (item.id !== itemId) return item;
+      return {
+        ...item,
+        objections: [
+          ...(item.objections || []),
+          { id: `obj-${Date.now()}`, date: new Date().toISOString(), user: 'Alefy Alves', text: objectionText.trim(), resolved: false },
+        ],
+      };
+    });
+    onEdit(request.id, { items: updatedItems });
+    setObjectionText('');
+    setObjectionItemId(null);
+  };
+
+  const handleResolveObjection = (itemId: string, objId: string) => {
+    const updatedItems = request.items.map((item) => {
+      if (item.id !== itemId) return item;
+      return {
+        ...item,
+        objections: (item.objections || []).map((o) => o.id === objId ? { ...o, resolved: true } : o),
+      };
+    });
+    onEdit(request.id, { items: updatedItems });
+  };
 
   const handleSaveSupplier = () => {
     onEdit(request.id, {
@@ -265,29 +295,98 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
               </h3>
             </div>
             <div className="space-y-2">
-              {request.items.map((item, i) => (
-                <div key={item.id} className="bg-white border border-slate-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-xs text-slate-400 font-medium">Item {i + 1}</span>
-                        <PriorityBadge priority={item.priority} />
+              {request.items.map((item, i) => {
+                const openObjections = (item.objections || []).filter((o) => !o.resolved);
+                const resolvedObjections = (item.objections || []).filter((o) => o.resolved);
+                return (
+                  <div key={item.id} className={`bg-white border rounded-xl p-4 ${openObjections.length > 0 ? 'border-orange-300' : 'border-slate-200'}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs text-slate-400 font-medium">Item {i + 1}</span>
+                          <PriorityBadge priority={item.priority} />
+                          {openObjections.length > 0 && (
+                            <span className="flex items-center gap-1 text-xs text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
+                              <AlertCircle size={10} /> {openObjections.length} objeção
+                            </span>
+                          )}
+                        </div>
+                        <p className="font-semibold text-slate-800 text-sm">{item.description}</p>
+                        <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500">
+                          <span>Aplicação: <strong className="text-slate-700">{item.application}</strong></span>
+                          <span>Previsão: <strong className="text-slate-700">{formatDate(item.deliveryForecast)}</strong></span>
+                          {item.technicalSpec && <span className="col-span-2">Especificação: <strong className="text-slate-700">{item.technicalSpec}</strong></span>}
+                          {item.observations && <span className="col-span-2">Obs: <em className="text-slate-600">{item.observations}</em></span>}
+                        </div>
                       </div>
-                      <p className="font-semibold text-slate-800 text-sm">{item.description}</p>
-                      <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500">
-                        <span>Aplicação: <strong className="text-slate-700">{item.application}</strong></span>
-                        <span>Previsão: <strong className="text-slate-700">{formatDate(item.deliveryForecast)}</strong></span>
-                        {item.technicalSpec && <span className="col-span-2">Especificação: <strong className="text-slate-700">{item.technicalSpec}</strong></span>}
-                        {item.observations && <span className="col-span-2">Obs: <em className="text-slate-600">{item.observations}</em></span>}
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs text-slate-400">Qtd.</p>
+                        <p className="text-lg font-bold text-slate-800">{item.quantity}</p>
                       </div>
                     </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="text-xs text-slate-400">Qtd.</p>
-                      <p className="text-lg font-bold text-slate-800">{item.quantity}</p>
-                    </div>
+
+                    {/* Objections list */}
+                    {(item.objections || []).length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        {openObjections.map((obj) => (
+                          <div key={obj.id} className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                            <AlertCircle size={13} className="text-orange-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-semibold text-orange-700">{obj.user}</p>
+                              <p className="text-xs text-orange-800 mt-0.5">{obj.text}</p>
+                              <p className="text-[10px] text-orange-400 mt-0.5">{new Date(obj.date).toLocaleString('pt-BR')}</p>
+                            </div>
+                            <button onClick={() => handleResolveObjection(item.id, obj.id)}
+                              className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 flex-shrink-0 mt-0.5">
+                              <CheckCheck size={12} /> Resolver
+                            </button>
+                          </div>
+                        ))}
+                        {resolvedObjections.map((obj) => (
+                          <div key={obj.id} className="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 opacity-60">
+                            <CheckCheck size={13} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs text-slate-500 line-through">{obj.text}</p>
+                            </div>
+                            <span className="text-[10px] text-emerald-600 font-medium flex-shrink-0">Resolvido</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Add objection */}
+                    {objectionItemId === item.id ? (
+                      <div className="mt-3 space-y-2">
+                        <textarea
+                          value={objectionText}
+                          onChange={(e) => setObjectionText(e.target.value)}
+                          spellCheck={true}
+                          lang="pt-BR"
+                          placeholder="Descreva a objeção ou correção necessária..."
+                          rows={2}
+                          className="w-full border border-orange-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none"
+                          autoFocus
+                        />
+                        <div className="flex gap-2">
+                          <button onClick={() => handleAddObjection(item.id)}
+                            className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                            <MessageSquarePlus size={12} /> Registrar
+                          </button>
+                          <button onClick={() => { setObjectionItemId(null); setObjectionText(''); }}
+                            className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5 rounded-lg transition-colors">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button onClick={() => setObjectionItemId(item.id)}
+                        className="mt-3 flex items-center gap-1.5 text-xs text-slate-400 hover:text-orange-600 transition-colors font-medium">
+                        <MessageSquarePlus size={13} /> Adicionar Objeção
+                      </button>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

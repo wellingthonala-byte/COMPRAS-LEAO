@@ -122,7 +122,7 @@ export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
                 <input
                   type="text" required value={requester}
                   onChange={(e) => setRequester(e.target.value)}
-                  placeholder="Nome do solicitante"
+                  placeholder="Nome do solicitante" spellCheck={true} lang="pt-BR"
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
                 />
               </div>
@@ -149,7 +149,7 @@ export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Observações Gerais</label>
                 <textarea value={observations} onChange={(e) => setObservations(e.target.value)} rows={3}
-                  placeholder="Observações sobre a solicitação..."
+                  placeholder="Observações sobre a solicitação..." spellCheck={true} lang="pt-BR"
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none" />
               </div>
             </div>
@@ -184,7 +184,7 @@ export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
                       <label className="block text-xs font-medium text-slate-600 mb-1">Descrição <span className="text-red-500">*</span></label>
                       <input type="text" required value={item.description}
                         onChange={(e) => updateItem(item.id, 'description', e.target.value)}
-                        placeholder="Descrição do material/serviço"
+                        placeholder="Descrição do material/serviço" spellCheck={true} lang="pt-BR"
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
                     </div>
                     <div>
@@ -217,13 +217,13 @@ export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
                     <div className="col-span-3">
                       <label className="block text-xs font-medium text-slate-600 mb-1">Especificação Técnica</label>
                       <textarea value={item.technicalSpec} onChange={(e) => updateItem(item.id, 'technicalSpec', e.target.value)} rows={2}
-                        placeholder="Especificações técnicas..."
+                        placeholder="Especificações técnicas..." spellCheck={true} lang="pt-BR"
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none bg-white" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-xs font-medium text-slate-600 mb-1">Observações do Item</label>
                       <textarea value={item.observations} onChange={(e) => updateItem(item.id, 'observations', e.target.value)} rows={2}
-                        placeholder="Observações sobre este item..."
+                        placeholder="Observações sobre este item..." spellCheck={true} lang="pt-BR"
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none bg-white" />
                     </div>
                   </div>
