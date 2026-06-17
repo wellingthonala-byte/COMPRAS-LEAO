@@ -1,4 +1,4 @@
-import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save } from 'lucide-react';
 import { useState } from 'react';
 import { PurchaseRequest, Status } from '../../types';
 import { colorFromInitials } from '../../utils/colors';
@@ -11,7 +11,7 @@ interface RequestDetailModalProps {
   onClose: () => void;
   onAdvanceStatus: (id: string) => void;
   onApprove: (id: string, approverName: string, approvalId: string) => void;
-  onEdit: () => void;
+  onEdit: (id: string, fields: Partial<PurchaseRequest>) => void;
 }
 
 const statusIcons: Partial<Record<Status, React.ReactNode>> = {
@@ -34,6 +34,28 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
   const [approverName, setApproverName] = useState('');
   const [approvalId, setApprovalId] = useState('');
   const [approvalError, setApprovalError] = useState('');
+
+  const [editingSupplier, setEditingSupplier] = useState(false);
+  const [supplierDraft, setSupplierDraft] = useState({
+    supplier: request.supplier || '',
+    value: request.value !== undefined ? String(request.value) : '',
+    orderNumber: request.orderNumber || '',
+    fiscalNote: request.fiscalNote || '',
+    deliveryForecast: request.deliveryForecast || '',
+    realDeliveryDate: request.realDeliveryDate || '',
+  });
+
+  const handleSaveSupplier = () => {
+    onEdit(request.id, {
+      supplier: supplierDraft.supplier || undefined,
+      value: supplierDraft.value ? parseFloat(supplierDraft.value.replace(',', '.')) : undefined,
+      orderNumber: supplierDraft.orderNumber || undefined,
+      fiscalNote: supplierDraft.fiscalNote || undefined,
+      deliveryForecast: supplierDraft.deliveryForecast,
+      realDeliveryDate: supplierDraft.realDeliveryDate || undefined,
+    });
+    setEditingSupplier(false);
+  };
 
   const formatDate = (dateStr: string) =>
     new Date(dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
@@ -137,10 +159,65 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
                   <Truck size={14} className="text-violet-600" />
                   <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Fornecedor</h3>
                 </div>
-                <button onClick={onEdit} className="text-xs text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1 transition-colors">
-                  <Edit3 size={11} /> Editar
-                </button>
+                {editingSupplier ? (
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingSupplier(false)} className="text-xs text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 transition-colors">
+                      <X size={11} /> Cancelar
+                    </button>
+                    <button onClick={handleSaveSupplier} className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 transition-colors">
+                      <Save size={11} /> Salvar
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => setEditingSupplier(true)} className="text-xs text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1 transition-colors">
+                    <Edit3 size={11} /> Editar
+                  </button>
+                )}
               </div>
+              {editingSupplier ? (
+                <div className="space-y-2.5">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Fornecedor</label>
+                      <input value={supplierDraft.supplier} onChange={(e) => setSupplierDraft(d => ({ ...d, supplier: e.target.value }))}
+                        placeholder="Nome do fornecedor"
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Valor (R$)</label>
+                      <input value={supplierDraft.value} onChange={(e) => setSupplierDraft(d => ({ ...d, value: e.target.value }))}
+                        placeholder="0,00" type="text"
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Nº do Pedido</label>
+                      <input value={supplierDraft.orderNumber} onChange={(e) => setSupplierDraft(d => ({ ...d, orderNumber: e.target.value }))}
+                        placeholder="PO-2026-0000"
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Nota Fiscal</label>
+                      <input value={supplierDraft.fiscalNote} onChange={(e) => setSupplierDraft(d => ({ ...d, fiscalNote: e.target.value }))}
+                        placeholder="NF-00000"
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Previsão de Entrega</label>
+                      <input type="date" value={supplierDraft.deliveryForecast} onChange={(e) => setSupplierDraft(d => ({ ...d, deliveryForecast: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                    </div>
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Entrega Real</label>
+                      <input type="date" value={supplierDraft.realDeliveryDate} onChange={(e) => setSupplierDraft(d => ({ ...d, realDeliveryDate: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div className="space-y-2.5">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -175,6 +252,7 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
                   </div>
                 </div>
               </div>
+              )}
             </div>
           </div>
 

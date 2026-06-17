@@ -57,6 +57,10 @@ export function KanbanPage() {
     );
   };
 
+  const handleEdit = (id: string, fields: Partial<import('../types').PurchaseRequest>) => {
+    setRequests((prev) => prev.map((r) => r.id !== id ? r : { ...r, ...fields }));
+  };
+
   const handleApprove = (id: string, approverName: string, approvalId: string) => {
     setRequests((prev) =>
       prev.map((r) => {
@@ -148,7 +152,7 @@ export function KanbanPage() {
           onClose={() => setSelectedId(null)}
           onAdvanceStatus={(id) => { handleAdvanceStatus(id); setSelectedId(null); }}
           onApprove={(id, name, approvalId) => { handleApprove(id, name, approvalId); }}
-          onEdit={() => {}}
+          onEdit={handleEdit}
         />
       )}
     </div>
