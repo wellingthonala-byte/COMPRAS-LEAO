@@ -57,6 +57,31 @@ export function KanbanPage() {
     );
   };
 
+  const handleApprove = (id: string, approverName: string, approvalId: string) => {
+    setRequests((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        return {
+          ...r,
+          approvedBy: approverName,
+          approvalId,
+          approvedAt: new Date().toISOString(),
+          history: [
+            ...r.history,
+            {
+              id: `h-${Date.now()}`,
+              date: new Date().toISOString(),
+              user: approverName,
+              action: `Aprovado pelo gestor (ID: ${approvalId})`,
+              from: r.status,
+              to: r.status,
+            },
+          ],
+        };
+      })
+    );
+  };
+
   const hasFilters = search || filterPriority || filterSector;
 
   return (
@@ -66,6 +91,7 @@ export function KanbanPage() {
         subtitle="Acompanhe o fluxo de todas as solicitações"
         searchValue={search}
         onSearchChange={setSearch}
+        requests={requests}
       />
 
       <div className="flex-1 overflow-hidden pt-16">
@@ -121,6 +147,7 @@ export function KanbanPage() {
           request={selectedRequest}
           onClose={() => setSelectedId(null)}
           onAdvanceStatus={(id) => { handleAdvanceStatus(id); setSelectedId(null); }}
+          onApprove={(id, name, approvalId) => { handleApprove(id, name, approvalId); }}
           onEdit={() => {}}
         />
       )}

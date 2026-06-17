@@ -1,4 +1,5 @@
-import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck } from 'lucide-react';
+import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { useState } from 'react';
 import { PurchaseRequest, Status } from '../../types';
 import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
@@ -9,6 +10,7 @@ interface RequestDetailModalProps {
   request: PurchaseRequest;
   onClose: () => void;
   onAdvanceStatus: (id: string) => void;
+  onApprove: (id: string, approverName: string, approvalId: string) => void;
   onEdit: () => void;
 }
 
@@ -23,9 +25,15 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Finalizado': <ChevronRight size={14} />,
 };
 
-export function RequestDetailModal({ request, onClose, onAdvanceStatus, onEdit }: RequestDetailModalProps) {
+export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprove, onEdit }: RequestDetailModalProps) {
   const currentIdx = STATUS_ORDER.indexOf(request.status);
   const canAdvance = currentIdx < STATUS_ORDER.length - 1;
+  const isApprovalStep = request.status === 'Em Aprovação';
+  const isApproved = !!request.approvedBy;
+
+  const [approverName, setApproverName] = useState('');
+  const [approvalId, setApprovalId] = useState('');
+  const [approvalError, setApprovalError] = useState('');
 
   const formatDate = (dateStr: string) =>
     new Date(dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
@@ -205,6 +213,63 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onEdit }
             </div>
           </div>
 
+          {/* Aprovação do Gestor */}
+          {isApprovalStep && (
+            <div className={`rounded-xl p-4 border ${isApproved ? 'bg-emerald-50 border-emerald-200' : 'bg-yellow-50 border-yellow-200'}`}>
+              <div className="flex items-center gap-2 mb-3">
+                {isApproved ? <ShieldCheck size={16} className="text-emerald-600" /> : <ShieldAlert size={16} className="text-yellow-600" />}
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Aprovação do Gestor</h3>
+              </div>
+              {isApproved ? (
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-emerald-700">✓ Aprovado por {request.approvedBy}</p>
+                  <p className="text-xs text-emerald-600">ID de Aprovação: <strong>{request.approvalId}</strong></p>
+                  {request.approvedAt && <p className="text-xs text-emerald-500">Em {new Date(request.approvedAt).toLocaleString('pt-BR')}</p>}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-xs text-yellow-700">Esta solicitação requer aprovação do gestor antes de avançar.</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Nome do Gestor <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={approverName}
+                        onChange={(e) => { setApproverName(e.target.value); setApprovalError(''); }}
+                        placeholder="Nome completo"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">ID do Gestor <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={approvalId}
+                        onChange={(e) => { setApprovalId(e.target.value); setApprovalError(''); }}
+                        placeholder="Ex: GST-001"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
+                      />
+                    </div>
+                  </div>
+                  {approvalError && <p className="text-xs text-red-600">{approvalError}</p>}
+                  <button
+                    onClick={() => {
+                      if (!approverName.trim() || !approvalId.trim()) {
+                        setApprovalError('Preencha o nome e o ID do gestor para aprovar.');
+                        return;
+                      }
+                      onApprove(request.id, approverName.trim(), approvalId.trim());
+                    }}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <ShieldCheck size={14} />
+                    Aprovar Solicitação
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Histórico */}
           <div>
             <div className="flex items-center gap-2 mb-3">
@@ -240,7 +305,13 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onEdit }
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium">
             Fechar
           </button>
-          {canAdvance && (
+          {canAdvance && isApprovalStep && !isApproved && (
+            <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
+              <ShieldAlert size={15} />
+              Aguardando aprovação do gestor
+            </span>
+          )}
+          {canAdvance && (!isApprovalStep || isApproved) && (
             <button
               onClick={() => onAdvanceStatus(request.id)}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"

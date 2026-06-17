@@ -31,6 +31,9 @@ export interface PurchaseRequest {
   items: Item[];
   observations?: string;
   history: HistoryEntry[];
+  approvedBy?: string;
+  approvalId?: string;
+  approvedAt?: string;
 }
 
 export interface HistoryEntry {
@@ -40,4 +43,12 @@ export interface HistoryEntry {
   action: string;
   from?: Status;
   to?: Status;
+}
+
+export interface Notification {
+  id: string;
+  date: string;
+  message: string;
+  requestNumber: string;
+  read: boolean;
 }
