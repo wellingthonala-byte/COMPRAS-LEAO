@@ -59,7 +59,20 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
         ],
       };
     });
-    onEdit(request.id, { items: updatedItems });
+    const objectedItem = request.items.find((i) => i.id === itemId);
+    onEdit(request.id, {
+      items: updatedItems,
+      history: [
+        ...request.history,
+        {
+          id: `h-${Date.now()}`,
+          date: new Date().toISOString(),
+          user: 'Alefy Alves',
+          action: `Objeção registrada no item: ${objectedItem?.description || itemId}`,
+          to: request.status,
+        },
+      ],
+    });
     setObjectionText('');
     setObjectionItemId(null);
   };
