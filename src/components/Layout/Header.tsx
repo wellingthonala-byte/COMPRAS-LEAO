@@ -1,7 +1,8 @@
-import { Plus, Bell, Search, X, ShieldCheck, Clock, ArrowRight } from 'lucide-react';
+import { Plus, Bell, Search, X, ShieldCheck, Clock, ArrowRight, Send } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PurchaseRequest } from '../../types';
+import { sendTestNotification, NTFY_TOPIC } from '../../utils/notify';
 
 interface HeaderProps {
   title: string;
@@ -15,6 +16,18 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [testStatus, setTestStatus] = useState<string | null>(null);
+
+  const handleTestNotification = async () => {
+    setTestStatus('enviando...');
+    const result = await sendTestNotification();
+    if (result.status === 200) {
+      setTestStatus('✓ enviado! (HTTP 200)');
+    } else {
+      setTestStatus(`✗ erro HTTP ${result.status ?? 'rede'}`);
+    }
+    setTimeout(() => setTestStatus(null), 5000);
+  };
 
   const notifications = requests
     .flatMap((r) =>
@@ -123,13 +136,23 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
         )}
       </div>
 
-      <button
-        onClick={() => navigate('/nova-solicitacao')}
-        className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
-      >
-        <Plus size={16} />
-        Nova Solicitação
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={handleTestNotification}
+          title={`Testar notificação ntfy (tópico: ${NTFY_TOPIC})`}
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition-colors"
+        >
+          <Send size={13} />
+          {testStatus ?? 'Testar ntfy'}
+        </button>
+        <button
+          onClick={() => navigate('/nova-solicitacao')}
+          className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
+        >
+          <Plus size={16} />
+          Nova Solicitação
+        </button>
+      </div>
     </header>
   );
 }
