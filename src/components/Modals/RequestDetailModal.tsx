@@ -38,6 +38,8 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
   const [editingSupplier, setEditingSupplier] = useState(false);
   const [objectionItemId, setObjectionItemId] = useState<string | null>(null);
   const [objectionText, setObjectionText] = useState('');
+  const [replyObjId, setReplyObjId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
   const [supplierDraft, setSupplierDraft] = useState({
     supplier: request.supplier || '',
     value: request.value !== undefined ? String(request.value) : '',
@@ -75,6 +77,22 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
     });
     setObjectionText('');
     setObjectionItemId(null);
+  };
+
+  const handleReplyObjection = (itemId: string, objId: string) => {
+    if (!replyText.trim()) return;
+    const updatedItems = request.items.map((item) => {
+      if (item.id !== itemId) return item;
+      return {
+        ...item,
+        objections: (item.objections || []).map((o) =>
+          o.id === objId ? { ...o, response: replyText.trim(), respondedBy: request.requester, respondedAt: new Date().toISOString() } : o
+        ),
+      };
+    });
+    onEdit(request.id, { items: updatedItems });
+    setReplyText('');
+    setReplyObjId(null);
   };
 
   const handleResolveObjection = (itemId: string, objId: string) => {
@@ -342,17 +360,56 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
                     {(item.objections || []).length > 0 && (
                       <div className="mt-3 space-y-2">
                         {openObjections.map((obj) => (
-                          <div key={obj.id} className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
-                            <AlertCircle size={13} className="text-orange-500 flex-shrink-0 mt-0.5" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-xs font-semibold text-orange-700">{obj.user}</p>
-                              <p className="text-xs text-orange-800 mt-0.5">{obj.text}</p>
-                              <p className="text-[10px] text-orange-400 mt-0.5">{new Date(obj.date).toLocaleString('pt-BR')}</p>
+                          <div key={obj.id} className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 space-y-2">
+                            <div className="flex items-start gap-2">
+                              <AlertCircle size={13} className="text-orange-500 flex-shrink-0 mt-0.5" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-semibold text-orange-700">{obj.user}</p>
+                                <p className="text-xs text-orange-800 mt-0.5">{obj.text}</p>
+                                <p className="text-[10px] text-orange-400 mt-0.5">{new Date(obj.date).toLocaleString('pt-BR')}</p>
+                              </div>
+                              <button onClick={() => handleResolveObjection(item.id, obj.id)}
+                                className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 flex-shrink-0 mt-0.5">
+                                <CheckCheck size={12} /> Resolver
+                              </button>
                             </div>
-                            <button onClick={() => handleResolveObjection(item.id, obj.id)}
-                              className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 flex-shrink-0 mt-0.5">
-                              <CheckCheck size={12} /> Resolver
-                            </button>
+                            {obj.response && (
+                              <div className="ml-5 bg-white border border-orange-100 rounded-lg px-3 py-2">
+                                <p className="text-xs font-semibold text-slate-600">↳ Resposta de {obj.respondedBy}</p>
+                                <p className="text-xs text-slate-700 mt-0.5">{obj.response}</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5">{obj.respondedAt ? new Date(obj.respondedAt).toLocaleString('pt-BR') : ''}</p>
+                              </div>
+                            )}
+                            {!obj.response && (
+                              replyObjId === obj.id ? (
+                                <div className="ml-5 space-y-1.5">
+                                  <textarea
+                                    value={replyText}
+                                    onChange={(e) => setReplyText(e.target.value)}
+                                    spellCheck={true} lang="pt-BR"
+                                    placeholder="Descreva o que foi corrigido ou esclarecido..."
+                                    rows={2}
+                                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none bg-white"
+                                    autoFocus
+                                  />
+                                  <div className="flex gap-2">
+                                    <button onClick={() => handleReplyObjection(item.id, obj.id)}
+                                      className="flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                                      Enviar resposta
+                                    </button>
+                                    <button onClick={() => { setReplyObjId(null); setReplyText(''); }}
+                                      className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1.5 rounded-lg transition-colors">
+                                      Cancelar
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <button onClick={() => { setReplyObjId(obj.id); setReplyText(''); }}
+                                  className="ml-5 text-xs text-violet-600 hover:text-violet-800 font-medium transition-colors">
+                                  ↳ Responder (solicitante)
+                                </button>
+                              )
+                            )}
                           </div>
                         ))}
                         {resolvedObjections.map((obj) => (
