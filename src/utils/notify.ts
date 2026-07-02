@@ -12,7 +12,7 @@ interface NtfyOptions {
 
 export async function sendNotification({ title, message, priority = 3, tags = [] }: NtfyOptions) {
   try {
-    await fetch(NTFY_URL, {
+    const res = await fetch(NTFY_URL, {
       method: 'POST',
       headers: {
         'Title': title,
@@ -22,7 +22,8 @@ export async function sendNotification({ title, message, priority = 3, tags = []
       },
       body: message,
     });
-  } catch {
-    // silently ignore — notification is best-effort
+    console.log(`[ntfy] ${title} → status ${res.status}`);
+  } catch (e) {
+    console.error('[ntfy] Erro ao enviar notificação:', e);
   }
 }
