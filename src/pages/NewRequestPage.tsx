@@ -4,6 +4,7 @@ import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { Priority, Sector, PurchaseRequest } from '../types';
 import { generateRequestNumber } from '../utils/numbering';
+import { sendNotification } from '../utils/notify';
 
 interface ItemForm {
   id: string;
@@ -80,6 +81,12 @@ export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
       history: [{ id: `h-${Date.now()}`, date: now, user: requester, action: 'Solicitação criada', to: 'Nova Solicitação' }],
     };
     onAdd(newRequest);
+    sendNotification({
+      title: `🆕 Nova Solicitação ${number}`,
+      message: `${requester} (${sector as string}) abriu ${items.length} item(s). Prioridade: ${priority}.`,
+      priority: priority === 'Máquina Parada' ? 5 : priority === 'Urgente' ? 4 : 3,
+      tags: ['inbox'],
+    });
     setSubmitted(true);
     setTimeout(() => navigate('/'), 1500);
   };

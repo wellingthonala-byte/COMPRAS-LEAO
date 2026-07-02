@@ -5,6 +5,7 @@ import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { RequestDetailModal } from '../components/Modals/RequestDetailModal';
 import { STATUS_ORDER } from '../data/mockData';
 import { PurchaseRequest, Priority, Sector, Status } from '../types';
+import { sendNotification } from '../utils/notify';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
 const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
@@ -42,6 +43,12 @@ export function KanbanPage({ requests, setRequests }: KanbanPageProps) {
         const idx = STATUS_ORDER.indexOf(r.status);
         if (idx >= STATUS_ORDER.length - 1) return r;
         const nextStatus = STATUS_ORDER[idx + 1];
+        sendNotification({
+          title: `📦 ${r.number} — ${nextStatus}`,
+          message: `Solicitação de ${r.requester} (${r.sector}) avançou para "${nextStatus}".`,
+          priority: r.priority === 'Máquina Parada' ? 5 : r.priority === 'Urgente' ? 4 : 3,
+          tags: ['package'],
+        });
         return {
           ...r,
           status: nextStatus,
