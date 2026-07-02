@@ -10,41 +10,38 @@ interface NtfyOptions {
   tags?: string[];
 }
 
+function buildUrl(title: string, priority: number, tags: string[]): string {
+  const params = new URLSearchParams({
+    title,
+    priority: String(priority),
+    ...(tags.length > 0 ? { tags: tags.join(',') } : {}),
+  });
+  return `${NTFY_URL}?${params.toString()}`;
+}
+
 export async function sendNotification({ title, message, priority = 3, tags = [] }: NtfyOptions) {
   try {
-    const res = await fetch(NTFY_URL, {
+    await fetch(buildUrl(title, priority, tags), {
       method: 'POST',
-      headers: {
-        'Title': title,
-        'Priority': String(priority),
-        'Tags': tags.join(','),
-        'Content-Type': 'text/plain',
-      },
+      mode: 'no-cors',
       body: message,
     });
-    console.log(`[ntfy] "${title}" → HTTP ${res.status}`);
-    return res.status;
+    console.log(`[ntfy] "${title}" enviada`);
   } catch (e) {
     console.error('[ntfy] Erro:', e);
-    return null;
   }
 }
 
-export async function sendTestNotification(): Promise<{ status: number | null; error?: string }> {
+export async function sendTestNotification(): Promise<{ ok: boolean; error?: string }> {
   try {
-    const res = await fetch(NTFY_URL, {
+    await fetch(buildUrl('🔔 Teste do Sistema', 3, ['bell']), {
       method: 'POST',
-      headers: {
-        'Title': '🔔 Teste do Sistema',
-        'Priority': '3',
-        'Tags': 'bell',
-        'Content-Type': 'text/plain',
-      },
-      body: `Notificação de teste enviada às ${new Date().toLocaleTimeString('pt-BR')}`,
+      mode: 'no-cors',
+      body: `Teste enviado às ${new Date().toLocaleTimeString('pt-BR')}`,
     });
-    return { status: res.status };
+    return { ok: true };
   } catch (e) {
-    return { status: null, error: String(e) };
+    return { ok: false, error: String(e) };
   }
 }
 
