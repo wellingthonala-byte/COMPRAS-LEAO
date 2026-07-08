@@ -1,5 +1,6 @@
 import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
+import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
 import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
@@ -63,6 +64,12 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
       };
     });
     const objectedItem = request.items.find((i) => i.id === itemId);
+    sendNotification({
+      title: `⚠️ Objeção em ${request.number}`,
+      message: `Item "${objectedItem?.description}" recebeu uma objeção: "${objectionText.trim()}"`,
+      priority: 4,
+      tags: ['warning'],
+    });
     onEdit(request.id, {
       items: updatedItems,
       history: [
@@ -109,6 +116,12 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
   };
 
   const handleResubmit = () => {
+    sendNotification({
+      title: `✅ ${request.number} — Solicitação corrigida`,
+      message: `${request.requester} corrigiu os itens e reenviou a solicitação ${request.number}.`,
+      priority: 3,
+      tags: ['white_check_mark'],
+    });
     const now = new Date().toISOString();
     const updatedItems = request.items.map((item) => ({
       ...item,
