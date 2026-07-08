@@ -44,7 +44,6 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
   const [requester, setRequester] = useState(currentUser.name);
   const [sector, setSector] = useState<Sector | ''>('');
   const [priority, setPriority] = useState<Priority>('Não Urgente');
-  const [deliveryForecast, setDeliveryForecast] = useState('');
   const [observations, setObservations] = useState('');
   const [items, setItems] = useState<ItemForm[]>([newItem(1)]);
   const [submitted, setSubmitted] = useState(false);
@@ -68,14 +67,14 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
       priority,
       status: 'Nova Solicitação',
       createdAt: now,
-      deliveryForecast: deliveryForecast || now.slice(0, 10),
+      deliveryForecast: now.slice(0, 10),
       items: items.map((item, idx) => ({
         id: `item-${Date.now()}-${idx}`,
         description: item.description,
         quantity: item.quantity,
         application: item.application,
         priority: item.priority,
-        deliveryForecast: item.deliveryForecast || deliveryForecast || now.slice(0, 10),
+        deliveryForecast: item.deliveryForecast || now.slice(0, 10),
         technicalSpec: item.technicalSpec || undefined,
         observations: item.observations || undefined,
       })),
