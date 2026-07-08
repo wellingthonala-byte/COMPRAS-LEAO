@@ -1,4 +1,4 @@
-import { Calendar, Package, Building2, Target, ShieldCheck } from 'lucide-react';
+import { Calendar, Package, Building2, Target, ShieldCheck, AlertCircle } from 'lucide-react';
 import { PurchaseRequest } from '../../types';
 import { Avatar } from '../UI/Avatar';
 import { PriorityBadge } from '../UI/Badge';
@@ -21,11 +21,12 @@ export function KanbanCard({ request, onClick }: KanbanCardProps) {
   const dateFormatted = new Date(request.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const firstItem = request.items[0];
   const isAwaitingApproval = request.status === 'Em Aprovação' && !request.approvedBy;
+  const openObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
 
   return (
     <div
       onClick={onClick}
-      className={`bg-white rounded-xl border border-slate-200 border-l-4 ${borderColor} p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group ${isAwaitingApproval ? 'ring-1 ring-yellow-300' : ''}`}
+      className={`bg-white rounded-xl border border-slate-200 border-l-4 ${borderColor} p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group ${isAwaitingApproval ? 'ring-1 ring-yellow-300' : ''} ${openObjections > 0 ? 'ring-1 ring-orange-300' : ''}`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <PriorityBadge priority={request.priority} />
@@ -52,6 +53,13 @@ export function KanbanCard({ request, onClick }: KanbanCardProps) {
         <Building2 size={12} className="text-slate-300" />
         <span className="text-xs text-slate-500">{request.sector}</span>
       </div>
+
+      {openObjections > 0 && (
+        <div className="mb-2 px-2 py-1 bg-orange-50 border border-orange-200 rounded-lg flex items-center gap-1.5">
+          <AlertCircle size={11} className="text-orange-500 flex-shrink-0" />
+          <p className="text-xs text-orange-700 font-medium">{openObjections} objeção pendente{openObjections > 1 ? 's' : ''}</p>
+        </div>
+      )}
 
       {isAwaitingApproval && (
         <div className="mb-2 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded-lg">
