@@ -364,24 +364,23 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
                 const openObjections = (item.objections || []).filter((o) => !o.resolved);
                 const resolvedObjections = (item.objections || []).filter((o) => o.resolved);
                 return (
-                  <div key={item.id} className={`bg-white border rounded-xl p-4 ${openObjections.length > 0 ? 'border-orange-300 bg-orange-50/30' : 'border-slate-200'}`}>
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-slate-400 font-medium">Item {i + 1}</span>
-                        <PriorityBadge priority={item.priority} />
-                        {openObjections.length > 0 && (
-                          <span className="flex items-center gap-1 text-xs text-orange-600 font-medium bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">
-                            <AlertCircle size={10} /> {openObjections.length} objeção pendente
-                          </span>
-                        )}
-                      </div>
-                      {openObjections.length > 0 && editingItemId !== item.id && (
-                        <button onClick={() => handleStartEditItem(item)}
-                          className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-800 font-semibold border border-orange-300 hover:border-orange-500 bg-white px-2.5 py-1 rounded-lg transition-colors flex-shrink-0">
-                          <Edit3 size={11} /> Editar e Corrigir
-                        </button>
+                  <div key={item.id} className={`bg-white border rounded-xl p-4 ${openObjections.length > 0 ? 'border-orange-400 bg-orange-50/40' : 'border-slate-200'}`}>
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      <span className="text-xs text-slate-400 font-medium">Item {i + 1}</span>
+                      <PriorityBadge priority={item.priority} />
+                      {openObjections.length > 0 && (
+                        <span className="flex items-center gap-1 text-xs text-orange-600 font-medium bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">
+                          <AlertCircle size={10} /> {openObjections.length} objeção pendente
+                        </span>
                       )}
                     </div>
+
+                    {openObjections.length > 0 && editingItemId !== item.id && (
+                      <button onClick={() => handleStartEditItem(item)}
+                        className="w-full mb-3 flex items-center justify-center gap-2 text-sm text-white font-semibold bg-orange-500 hover:bg-orange-600 border border-orange-500 px-3 py-2 rounded-lg transition-colors">
+                        <Edit3 size={13} /> Editar e Corrigir este Item
+                      </button>
+                    )}
 
                     {editingItemId === item.id ? (
                       <div className="space-y-2.5 bg-white border border-orange-200 rounded-xl p-3">
