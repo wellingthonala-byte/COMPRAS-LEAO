@@ -43,6 +43,9 @@ export interface Objection {
   user: string;
   text: string;
   resolved: boolean;
+  response?: string;
+  respondedBy?: string;
+  respondedAt?: string;
 }
 
 export interface HistoryEntry {
