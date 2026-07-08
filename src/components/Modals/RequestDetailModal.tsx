@@ -631,7 +631,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
               Aguardando aprovação do gestor
             </span>
           )}
-          {canAdvance && (!isApprovalStep || isApproved) && (
+          {canAdvance && (!isApprovalStep || isApproved) && currentUser.role !== 'gestor' && (
             <button
               onClick={() => onAdvanceStatus(request.id)}
               className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
