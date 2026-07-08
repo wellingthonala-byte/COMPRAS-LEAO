@@ -5,6 +5,7 @@ import { Header } from '../components/Layout/Header';
 import { Priority, Sector, PurchaseRequest } from '../types';
 import { generateRequestNumber } from '../utils/numbering';
 import { sendNotification } from '../utils/notify';
+import { AppUser } from '../data/users';
 
 interface ItemForm {
   id: string;
@@ -19,6 +20,7 @@ interface ItemForm {
 
 interface NewRequestPageProps {
   requests: PurchaseRequest[];
+  currentUser: AppUser;
   onAdd: (r: PurchaseRequest) => void;
 }
 
@@ -37,9 +39,9 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
+export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageProps) {
   const navigate = useNavigate();
-  const [requester, setRequester] = useState('');
+  const [requester, setRequester] = useState(currentUser.name);
   const [sector, setSector] = useState<Sector | ''>('');
   const [priority, setPriority] = useState<Priority>('Não Urgente');
   const [deliveryForecast, setDeliveryForecast] = useState('');

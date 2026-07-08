@@ -2,6 +2,7 @@ import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, P
 import { useState } from 'react';
 import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
+import { AppUser } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
 import { Avatar } from '../UI/Avatar';
@@ -9,6 +10,7 @@ import { STATUS_ORDER } from '../../data/mockData';
 
 interface RequestDetailModalProps {
   request: PurchaseRequest;
+  currentUser: AppUser;
   onClose: () => void;
   onAdvanceStatus: (id: string) => void;
   onApprove: (id: string, approverName: string, approvalId: string) => void;
@@ -26,16 +28,14 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Finalizado': <ChevronRight size={14} />,
 };
 
-export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprove, onEdit }: RequestDetailModalProps) {
+export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onApprove, onEdit }: RequestDetailModalProps) {
   const currentIdx = STATUS_ORDER.indexOf(request.status);
   const isApprovalStep = request.status === 'Em Aprovação';
   const isApproved = !!request.approvedBy;
   const totalOpenObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
   const canAdvance = currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
 
-  const [approverName, setApproverName] = useState('');
-  const [approvalId, setApprovalId] = useState('');
-  const [approvalError, setApprovalError] = useState('');
+  const [approvalError] = useState('');
 
   const [editingSupplier, setEditingSupplier] = useState(false);
   const [objectionItemId, setObjectionItemId] = useState<string | null>(null);
@@ -559,45 +559,26 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
                   <p className="text-xs text-emerald-600">ID de Aprovação: <strong>{request.approvalId}</strong></p>
                   {request.approvedAt && <p className="text-xs text-emerald-500">Em {new Date(request.approvedAt).toLocaleString('pt-BR')}</p>}
                 </div>
-              ) : (
+              ) : currentUser.role === 'gestor' ? (
                 <div className="space-y-3">
-                  <p className="text-xs text-yellow-700">Esta solicitação requer aprovação do gestor antes de avançar.</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Nome do Gestor <span className="text-red-500">*</span></label>
-                      <input
-                        type="text"
-                        value={approverName}
-                        onChange={(e) => { setApproverName(e.target.value); setApprovalError(''); }}
-                        placeholder="Nome completo"
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">ID do Gestor <span className="text-red-500">*</span></label>
-                      <input
-                        type="text"
-                        value={approvalId}
-                        onChange={(e) => { setApprovalId(e.target.value); setApprovalError(''); }}
-                        placeholder="Ex: GST-001"
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
-                      />
-                    </div>
+                  <p className="text-xs text-yellow-700">Você está logado como gestor. Confirme a aprovação desta solicitação.</p>
+                  <div className="bg-white border border-yellow-200 rounded-lg px-3 py-2">
+                    <p className="text-xs text-slate-500">Gestor</p>
+                    <p className="text-sm font-semibold text-slate-800">{currentUser.name}</p>
                   </div>
                   {approvalError && <p className="text-xs text-red-600">{approvalError}</p>}
                   <button
-                    onClick={() => {
-                      if (!approverName.trim() || !approvalId.trim()) {
-                        setApprovalError('Preencha o nome e o ID do gestor para aprovar.');
-                        return;
-                      }
-                      onApprove(request.id, approverName.trim(), approvalId.trim());
-                    }}
+                    onClick={() => onApprove(request.id, currentUser.name, currentUser.id)}
                     className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                   >
                     <ShieldCheck size={14} />
-                    Aprovar Solicitação
+                    Confirmar Aprovação
                   </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-yellow-700">Esta solicitação aguarda aprovação de um gestor.</p>
+                  <p className="text-xs text-slate-500">Apenas usuários com perfil de <strong>Gestor</strong> podem aprovar.</p>
                 </div>
               )}
             </div>
