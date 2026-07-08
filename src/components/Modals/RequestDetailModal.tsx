@@ -1,4 +1,4 @@
-import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle } from 'lucide-react';
+import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw } from 'lucide-react';
 import { useState } from 'react';
 import { PurchaseRequest, Status } from '../../types';
 import { colorFromInitials } from '../../utils/colors';
@@ -27,9 +27,10 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
 
 export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprove, onEdit }: RequestDetailModalProps) {
   const currentIdx = STATUS_ORDER.indexOf(request.status);
-  const canAdvance = currentIdx < STATUS_ORDER.length - 1;
   const isApprovalStep = request.status === 'Em Aprovação';
   const isApproved = !!request.approvedBy;
+  const totalOpenObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
+  const canAdvance = currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
 
   const [approverName, setApproverName] = useState('');
   const [approvalId, setApprovalId] = useState('');
@@ -38,8 +39,8 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
   const [editingSupplier, setEditingSupplier] = useState(false);
   const [objectionItemId, setObjectionItemId] = useState<string | null>(null);
   const [objectionText, setObjectionText] = useState('');
-  const [replyObjId, setReplyObjId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState('');
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemDraft, setItemDraft] = useState<Record<string, string | number>>({});
   const [supplierDraft, setSupplierDraft] = useState({
     supplier: request.supplier || '',
     value: request.value !== undefined ? String(request.value) : '',
@@ -79,20 +80,53 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
     setObjectionItemId(null);
   };
 
-  const handleReplyObjection = (itemId: string, objId: string) => {
-    if (!replyText.trim()) return;
+  const handleStartEditItem = (item: import('../../types').Item) => {
+    setEditingItemId(item.id);
+    setItemDraft({
+      description: item.description,
+      quantity: item.quantity,
+      application: item.application,
+      technicalSpec: item.technicalSpec || '',
+      observations: item.observations || '',
+    });
+  };
+
+  const handleSaveItemEdit = (itemId: string) => {
     const updatedItems = request.items.map((item) => {
       if (item.id !== itemId) return item;
       return {
         ...item,
-        objections: (item.objections || []).map((o) =>
-          o.id === objId ? { ...o, response: replyText.trim(), respondedBy: request.requester, respondedAt: new Date().toISOString() } : o
-        ),
+        description: String(itemDraft.description),
+        quantity: Number(itemDraft.quantity),
+        application: String(itemDraft.application),
+        technicalSpec: String(itemDraft.technicalSpec) || undefined,
+        observations: String(itemDraft.observations) || undefined,
       };
     });
     onEdit(request.id, { items: updatedItems });
-    setReplyText('');
-    setReplyObjId(null);
+    setEditingItemId(null);
+    setItemDraft({});
+  };
+
+  const handleResubmit = () => {
+    const now = new Date().toISOString();
+    const updatedItems = request.items.map((item) => ({
+      ...item,
+      objections: (item.objections || []).map((o) => ({ ...o, resolved: true })),
+    }));
+    onEdit(request.id, {
+      items: updatedItems,
+      history: [
+        ...request.history,
+        {
+          id: `h-${Date.now()}`,
+          date: now,
+          user: request.requester,
+          action: 'Solicitação corrigida e reenviada pelo solicitante',
+          to: request.status,
+        },
+      ],
+    });
   };
 
   const handleResolveObjection = (itemId: string, objId: string) => {
@@ -330,37 +364,94 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
                 const openObjections = (item.objections || []).filter((o) => !o.resolved);
                 const resolvedObjections = (item.objections || []).filter((o) => o.resolved);
                 return (
-                  <div key={item.id} className={`bg-white border rounded-xl p-4 ${openObjections.length > 0 ? 'border-orange-300' : 'border-slate-200'}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs text-slate-400 font-medium">Item {i + 1}</span>
-                          <PriorityBadge priority={item.priority} />
-                          {openObjections.length > 0 && (
-                            <span className="flex items-center gap-1 text-xs text-orange-600 font-medium bg-orange-50 px-2 py-0.5 rounded-full border border-orange-200">
-                              <AlertCircle size={10} /> {openObjections.length} objeção
-                            </span>
-                          )}
-                        </div>
-                        <p className="font-semibold text-slate-800 text-sm">{item.description}</p>
-                        <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500">
-                          <span>Aplicação: <strong className="text-slate-700">{item.application}</strong></span>
-                          <span>Previsão: <strong className="text-slate-700">{formatDate(item.deliveryForecast)}</strong></span>
-                          {item.technicalSpec && <span className="col-span-2">Especificação: <strong className="text-slate-700">{item.technicalSpec}</strong></span>}
-                          {item.observations && <span className="col-span-2">Obs: <em className="text-slate-600">{item.observations}</em></span>}
-                        </div>
+                  <div key={item.id} className={`bg-white border rounded-xl p-4 ${openObjections.length > 0 ? 'border-orange-300 bg-orange-50/30' : 'border-slate-200'}`}>
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs text-slate-400 font-medium">Item {i + 1}</span>
+                        <PriorityBadge priority={item.priority} />
+                        {openObjections.length > 0 && (
+                          <span className="flex items-center gap-1 text-xs text-orange-600 font-medium bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">
+                            <AlertCircle size={10} /> {openObjections.length} objeção pendente
+                          </span>
+                        )}
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs text-slate-400">Qtd.</p>
-                        <p className="text-lg font-bold text-slate-800">{item.quantity}</p>
-                      </div>
+                      {openObjections.length > 0 && editingItemId !== item.id && (
+                        <button onClick={() => handleStartEditItem(item)}
+                          className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-800 font-semibold border border-orange-300 hover:border-orange-500 bg-white px-2.5 py-1 rounded-lg transition-colors flex-shrink-0">
+                          <Edit3 size={11} /> Editar e Corrigir
+                        </button>
+                      )}
                     </div>
+
+                    {editingItemId === item.id ? (
+                      <div className="space-y-2.5 bg-white border border-orange-200 rounded-xl p-3">
+                        <p className="text-xs font-semibold text-orange-700 flex items-center gap-1"><Edit3 size={11}/> Corrija os campos abaixo:</p>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Descrição <span className="text-red-500">*</span></label>
+                          <input type="text" value={String(itemDraft.description)} spellCheck={true} lang="pt-BR"
+                            onChange={(e) => setItemDraft((d) => ({ ...d, description: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Quantidade</label>
+                            <input type="number" min={1} value={Number(itemDraft.quantity)}
+                              onChange={(e) => setItemDraft((d) => ({ ...d, quantity: Number(e.target.value) }))}
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-slate-500 mb-1">Aplicação</label>
+                            <input type="text" value={String(itemDraft.application)} spellCheck={true} lang="pt-BR"
+                              onChange={(e) => setItemDraft((d) => ({ ...d, application: e.target.value }))}
+                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Especificação Técnica</label>
+                          <textarea value={String(itemDraft.technicalSpec)} rows={2} spellCheck={true} lang="pt-BR"
+                            onChange={(e) => setItemDraft((d) => ({ ...d, technicalSpec: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none bg-white" />
+                        </div>
+                        <div>
+                          <label className="block text-xs text-slate-500 mb-1">Observações</label>
+                          <textarea value={String(itemDraft.observations)} rows={2} spellCheck={true} lang="pt-BR"
+                            onChange={(e) => setItemDraft((d) => ({ ...d, observations: e.target.value }))}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none bg-white" />
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleSaveItemEdit(item.id)}
+                            className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                            <Save size={12} /> Salvar Correção
+                          </button>
+                          <button onClick={() => { setEditingItemId(null); setItemDraft({}); }}
+                            className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1.5 rounded-lg transition-colors">
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1">
+                          <p className="font-semibold text-slate-800 text-sm">{item.description}</p>
+                          <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500">
+                            <span>Aplicação: <strong className="text-slate-700">{item.application}</strong></span>
+                            <span>Previsão: <strong className="text-slate-700">{formatDate(item.deliveryForecast)}</strong></span>
+                            {item.technicalSpec && <span className="col-span-2">Especificação: <strong className="text-slate-700">{item.technicalSpec}</strong></span>}
+                            {item.observations && <span className="col-span-2">Obs: <em className="text-slate-600">{item.observations}</em></span>}
+                          </div>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-xs text-slate-400">Qtd.</p>
+                          <p className="text-lg font-bold text-slate-800">{item.quantity}</p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Objections list */}
                     {(item.objections || []).length > 0 && (
                       <div className="mt-3 space-y-2">
                         {openObjections.map((obj) => (
-                          <div key={obj.id} className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 space-y-2">
+                          <div key={obj.id} className="bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 space-y-1">
                             <div className="flex items-start gap-2">
                               <AlertCircle size={13} className="text-orange-500 flex-shrink-0 mt-0.5" />
                               <div className="flex-1 min-w-0">
@@ -373,43 +464,6 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
                                 <CheckCheck size={12} /> Resolver
                               </button>
                             </div>
-                            {obj.response && (
-                              <div className="ml-5 bg-white border border-orange-100 rounded-lg px-3 py-2">
-                                <p className="text-xs font-semibold text-slate-600">↳ Resposta de {obj.respondedBy}</p>
-                                <p className="text-xs text-slate-700 mt-0.5">{obj.response}</p>
-                                <p className="text-[10px] text-slate-400 mt-0.5">{obj.respondedAt ? new Date(obj.respondedAt).toLocaleString('pt-BR') : ''}</p>
-                              </div>
-                            )}
-                            {!obj.response && (
-                              replyObjId === obj.id ? (
-                                <div className="ml-5 space-y-1.5">
-                                  <textarea
-                                    value={replyText}
-                                    onChange={(e) => setReplyText(e.target.value)}
-                                    spellCheck={true} lang="pt-BR"
-                                    placeholder="Descreva o que foi corrigido ou esclarecido..."
-                                    rows={2}
-                                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none bg-white"
-                                    autoFocus
-                                  />
-                                  <div className="flex gap-2">
-                                    <button onClick={() => handleReplyObjection(item.id, obj.id)}
-                                      className="flex items-center gap-1 bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
-                                      Enviar resposta
-                                    </button>
-                                    <button onClick={() => { setReplyObjId(null); setReplyText(''); }}
-                                      className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1.5 rounded-lg transition-colors">
-                                      Cancelar
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <button onClick={() => { setReplyObjId(obj.id); setReplyText(''); }}
-                                  className="ml-5 text-xs text-violet-600 hover:text-violet-800 font-medium transition-colors">
-                                  ↳ Responder (solicitante)
-                                </button>
-                              )
-                            )}
                           </div>
                         ))}
                         {resolvedObjections.map((obj) => (
@@ -459,6 +513,26 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
               })}
             </div>
           </div>
+
+          {/* Reenvio após correção */}
+          {totalOpenObjections > 0 && (
+            <div className="bg-orange-50 border border-orange-300 rounded-xl p-4">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={16} className="text-orange-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-orange-800">Correção obrigatória</p>
+                  <p className="text-xs text-orange-700 mt-1">
+                    Existem <strong>{totalOpenObjections}</strong> objeção(ões) pendente(s). O solicitante deve editar e corrigir os itens acima e depois reenviar a solicitação.
+                    O avanço de status está bloqueado até que todas as objeções sejam resolvidas.
+                  </p>
+                  <button onClick={handleResubmit}
+                    className="mt-3 flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                    <RotateCcw size={14} /> Reenviar Solicitação Corrigida
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Aprovação do Gestor */}
           {isApprovalStep && (
@@ -552,6 +626,12 @@ export function RequestDetailModal({ request, onClose, onAdvanceStatus, onApprov
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium">
             Fechar
           </button>
+          {totalOpenObjections > 0 && (
+            <span className="flex items-center gap-2 bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium">
+              <AlertCircle size={15} />
+              Bloqueado — corrija as objeções
+            </span>
+          )}
           {canAdvance && isApprovalStep && !isApproved && (
             <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
               <ShieldAlert size={15} />
