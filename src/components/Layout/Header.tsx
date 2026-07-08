@@ -21,10 +21,10 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
   const handleTestNotification = async () => {
     setTestStatus('enviando...');
     const result = await sendTestNotification();
-    if (result.status === 200) {
-      setTestStatus('✓ enviado! (HTTP 200)');
+    if (result.ok) {
+      setTestStatus('✓ enviado!');
     } else {
-      setTestStatus(`✗ erro HTTP ${result.status ?? 'rede'}`);
+      setTestStatus(`✗ erro: ${result.error ?? 'rede'}`);
     }
     setTimeout(() => setTestStatus(null), 5000);
   };
