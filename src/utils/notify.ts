@@ -1,4 +1,4 @@
-const NTFY_TOPIC = 'compras-leao-leao';
+const NTFY_TOPIC = 'clleao9274';
 const NTFY_URL = `https://ntfy.sh/${NTFY_TOPIC}`;
 
 type NtfyPriority = 1 | 2 | 3 | 4 | 5;
