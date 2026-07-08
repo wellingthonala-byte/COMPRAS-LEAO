@@ -150,11 +150,6 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
                   {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Previsão de Entrega</label>
-                <input type="date" value={deliveryForecast} onChange={(e) => setDeliveryForecast(e.target.value)}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
-              </div>
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Observações Gerais</label>
                 <textarea value={observations} onChange={(e) => setObservations(e.target.value)} rows={3}
@@ -216,12 +211,6 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700">
                         {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
                       </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Previsão do Item</label>
-                      <input type="date" value={item.deliveryForecast}
-                        onChange={(e) => updateItem(item.id, 'deliveryForecast', e.target.value)}
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-xs font-medium text-slate-600 mb-1">Especificação Técnica</label>

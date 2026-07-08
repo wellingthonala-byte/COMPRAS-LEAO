@@ -276,11 +276,11 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                       <Save size={11} /> Salvar
                     </button>
                   </div>
-                ) : (
+                ) : currentUser.role === 'comprador' ? (
                   <button onClick={() => setEditingSupplier(true)} className="text-xs text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1 transition-colors">
                     <Edit3 size={11} /> Editar
                   </button>
-                )}
+                ) : null}
               </div>
               {editingSupplier ? (
                 <div className="space-y-2.5">
