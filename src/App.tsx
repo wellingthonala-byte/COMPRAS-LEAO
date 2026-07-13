@@ -5,6 +5,7 @@ import { KanbanPage } from './pages/KanbanPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { NewRequestPage } from './pages/NewRequestPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
+import { ReportsPage } from './pages/ReportsPage';
 import { LoginPage } from './pages/LoginPage';
 import { mockRequests } from './data/mockData';
 import { PurchaseRequest } from './types';
@@ -26,7 +27,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage requests={requests} />} />
         <Route path="/nova-solicitacao" element={<NewRequestPage requests={requests} currentUser={currentUser} onAdd={(r) => setRequests((prev) => [r, ...prev])} />} />
         <Route path="/ordens" element={<PlaceholderPage title="Ordens de Serviço" />} />
-        <Route path="/relatorios" element={<PlaceholderPage title="Relatórios" />} />
+        <Route path="/relatorios" element={<ReportsPage requests={requests} />} />
         <Route path="/configuracoes" element={<PlaceholderPage title="Configurações" />} />
       </Routes>
     </BrowserRouter>
