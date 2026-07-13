@@ -38,10 +38,8 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   const totalOpenObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
   const canAdvance = currentIdx >= 0 && currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
 
-  // Solicitante só cancela antes da compra; gestor e comprador cancelam a qualquer momento
-  const canCancel = !isCancelled && !isFinalized && (
-    currentUser.role !== 'solicitante' || ['Nova Solicitação', 'Em Aprovação'].includes(request.status)
-  );
+  // Apenas o comprador pode cancelar solicitações
+  const canCancel = !isCancelled && !isFinalized && currentUser.role === 'comprador';
 
   const [approvalError] = useState('');
   const [cancelling, setCancelling] = useState(false);
