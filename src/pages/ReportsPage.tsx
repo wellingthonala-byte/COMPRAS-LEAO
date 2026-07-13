@@ -16,7 +16,7 @@ const CAT = ['#7c3aed', '#059669', '#d97706', '#2563eb', '#dc2626', '#0891b2'];
 
 const STATUS_ORDER: Status[] = [
   'Nova Solicitação', 'Em Aprovação', 'Em Cotação', 'Comprado',
-  'Em Rota', 'Em Serviço', 'Disponível para Retirada', 'Finalizado',
+  'Em Rota', 'Em Serviço', 'Disponível para Retirada', 'Finalizado', 'Cancelada',
 ];
 const STATUS_COLORS: Record<string, string> = {
   'Nova Solicitação': '#7c3aed',
@@ -27,6 +27,7 @@ const STATUS_COLORS: Record<string, string> = {
   'Em Serviço': '#ea580c',
   'Disponível para Retirada': '#64748b',
   'Finalizado': '#8b5cf6',
+  'Cancelada': '#dc2626',
 };
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -69,6 +70,7 @@ function periodRange(key: PeriodKey): { start: Date; end: Date } | null {
 function isApproved(r: PurchaseRequest): boolean {
   if (r.approvedBy) return true;
   if (r.history.some((h) => h.action.toLowerCase().includes('aprovad'))) return true;
+  if (r.status === 'Cancelada') return false;
   return STATUS_ORDER.indexOf(r.status) > 1;
 }
 function hasOpenObjection(r: PurchaseRequest): boolean {

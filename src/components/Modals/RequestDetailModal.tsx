@@ -15,6 +15,7 @@ interface RequestDetailModalProps {
   onAdvanceStatus: (id: string) => void;
   onApprove: (id: string, approverName: string, approvalId: string) => void;
   onEdit: (id: string, fields: Partial<PurchaseRequest>) => void;
+  onCancel: (id: string, reason: string) => void;
 }
 
 const statusIcons: Partial<Record<Status, React.ReactNode>> = {
@@ -28,14 +29,23 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Finalizado': <ChevronRight size={14} />,
 };
 
-export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onApprove, onEdit }: RequestDetailModalProps) {
+export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onApprove, onEdit, onCancel }: RequestDetailModalProps) {
   const currentIdx = STATUS_ORDER.indexOf(request.status);
   const isApprovalStep = request.status === 'Em Aprovação';
   const isApproved = !!request.approvedBy;
+  const isCancelled = request.status === 'Cancelada';
+  const isFinalized = request.status === 'Finalizado';
   const totalOpenObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
-  const canAdvance = currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
+  const canAdvance = currentIdx >= 0 && currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
+
+  // Solicitante só cancela antes da compra; gestor e comprador cancelam a qualquer momento
+  const canCancel = !isCancelled && !isFinalized && (
+    currentUser.role !== 'solicitante' || ['Nova Solicitação', 'Em Aprovação'].includes(request.status)
+  );
 
   const [approvalError] = useState('');
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   const [editingSupplier, setEditingSupplier] = useState(false);
   const [objectionItemId, setObjectionItemId] = useState<string | null>(null);
@@ -59,7 +69,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
         ...item,
         objections: [
           ...(item.objections || []),
-          { id: `obj-${Date.now()}`, date: new Date().toISOString(), user: 'Alefy Alves', text: objectionText.trim(), resolved: false },
+          { id: `obj-${Date.now()}`, date: new Date().toISOString(), user: currentUser.name, text: objectionText.trim(), resolved: false },
         ],
       };
     });
@@ -77,7 +87,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
         {
           id: `h-${Date.now()}`,
           date: new Date().toISOString(),
-          user: 'Alefy Alves',
+          user: currentUser.name,
           action: `Objeção registrada no item: ${objectedItem?.description || itemId}`,
           to: request.status,
         },
@@ -584,6 +594,21 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
             </div>
           )}
 
+          {/* Cancelamento */}
+          {isCancelled && (
+            <div className="rounded-xl p-4 border bg-red-50 border-red-200">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle size={16} className="text-red-600" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-700">Solicitação Cancelada</h3>
+              </div>
+              <p className="text-sm text-red-700">
+                Cancelada por <strong>{request.cancelledBy}</strong>
+                {request.cancelledAt && <> em {new Date(request.cancelledAt).toLocaleString('pt-BR')}</>}
+              </p>
+              {request.cancelReason && <p className="text-xs text-red-600 mt-1">Motivo: {request.cancelReason}</p>}
+            </div>
+          )}
+
           {/* Histórico */}
           <div>
             <div className="flex items-center gap-2 mb-3">
@@ -615,36 +640,73 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-200 bg-white flex items-center justify-between">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium">
-            Fechar
-          </button>
-          {totalOpenObjections > 0 && (
-            <span className="flex items-center gap-2 bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium">
-              <AlertCircle size={15} />
-              Bloqueado — corrija as objeções
-            </span>
+        <div className="px-6 py-4 border-t border-slate-200 bg-white">
+          {cancelling && (
+            <div className="mb-3 bg-red-50 border border-red-200 rounded-xl p-3">
+              <p className="text-xs font-semibold text-red-700 mb-2">Cancelar solicitação — informe o motivo (obrigatório)</p>
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={2} autoFocus
+                placeholder="Ex.: item não é mais necessário, compra duplicada, orçamento reprovado..."
+                className="w-full border border-red-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400 resize-none bg-white"
+              />
+              <div className="flex items-center gap-2 mt-2">
+                <button
+                  onClick={() => { if (cancelReason.trim()) onCancel(request.id, cancelReason.trim()); }}
+                  disabled={!cancelReason.trim()}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-colors"
+                >
+                  Confirmar Cancelamento
+                </button>
+                <button onClick={() => { setCancelling(false); setCancelReason(''); }}
+                  className="text-xs text-slate-500 hover:text-slate-700 px-3 py-1.5">
+                  Voltar
+                </button>
+              </div>
+            </div>
           )}
-          {canAdvance && isApprovalStep && !isApproved && (
-            <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
-              <ShieldAlert size={15} />
-              Aguardando aprovação do gestor
-            </span>
-          )}
-          {canAdvance && (!isApprovalStep || isApproved) && currentUser.role === 'comprador' && (
-            <button
-              onClick={() => onAdvanceStatus(request.id)}
-              className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
-            >
-              <ArrowRight size={15} />
-              Avançar para {STATUS_ORDER[currentIdx + 1]}
-            </button>
-          )}
-          {!canAdvance && (
-            <span className="flex items-center gap-2 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg text-sm font-medium">
-              ✓ Solicitação Finalizada
-            </span>
-          )}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium">
+                Fechar
+              </button>
+              {canCancel && !cancelling && (
+                <button onClick={() => setCancelling(true)}
+                  className="px-4 py-2 text-sm text-red-500 hover:bg-red-50 rounded-lg transition-colors font-medium border border-red-200">
+                  Cancelar Solicitação
+                </button>
+              )}
+            </div>
+            {isCancelled ? (
+              <span className="flex items-center gap-2 bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium">
+                <AlertCircle size={15} />
+                Cancelada{request.cancelledBy ? ` por ${request.cancelledBy}` : ''}
+              </span>
+            ) : isFinalized ? (
+              <span className="flex items-center gap-2 bg-emerald-100 text-emerald-700 px-4 py-2 rounded-lg text-sm font-medium">
+                ✓ Solicitação Finalizada
+              </span>
+            ) : totalOpenObjections > 0 ? (
+              <span className="flex items-center gap-2 bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium">
+                <AlertCircle size={15} />
+                Bloqueado — corrija as objeções
+              </span>
+            ) : canAdvance && isApprovalStep && !isApproved ? (
+              <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
+                <ShieldAlert size={15} />
+                Aguardando aprovação do gestor
+              </span>
+            ) : canAdvance && (!isApprovalStep || isApproved) && currentUser.role === 'comprador' ? (
+              <button
+                onClick={() => onAdvanceStatus(request.id)}
+                className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
+              >
+                <ArrowRight size={15} />
+                Avançar para {STATUS_ORDER[currentIdx + 1]}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>

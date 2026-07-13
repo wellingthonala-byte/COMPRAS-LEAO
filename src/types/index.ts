@@ -1,5 +1,5 @@
 export type Priority = 'Não Urgente' | 'Urgente' | 'Máquina Parada';
-export type Status = 'Nova Solicitação' | 'Em Aprovação' | 'Em Cotação' | 'Comprado' | 'Em Rota' | 'Em Serviço' | 'Disponível para Retirada' | 'Finalizado';
+export type Status = 'Nova Solicitação' | 'Em Aprovação' | 'Em Cotação' | 'Comprado' | 'Em Rota' | 'Em Serviço' | 'Disponível para Retirada' | 'Finalizado' | 'Cancelada';
 export type Sector = 'Produção' | 'Manutenção' | 'Administrativo' | 'TI' | 'RH' | 'Logística';
 
 export interface Item {
@@ -35,6 +35,9 @@ export interface PurchaseRequest {
   approvedBy?: string;
   approvalId?: string;
   approvedAt?: string;
+  cancelledBy?: string;
+  cancelledAt?: string;
+  cancelReason?: string;
 }
 
 export interface Objection {

@@ -11,6 +11,7 @@ const columnColors: Record<Status, string> = {
   'Em Serviço': 'bg-purple-500',
   'Disponível para Retirada': 'bg-teal-500',
   'Finalizado': 'bg-emerald-500',
+  'Cancelada': 'bg-red-400',
 };
 
 const columnBg: Record<Status, string> = {
@@ -22,6 +23,7 @@ const columnBg: Record<Status, string> = {
   'Em Serviço': 'bg-purple-50',
   'Disponível para Retirada': 'bg-teal-50',
   'Finalizado': 'bg-emerald-50',
+  'Cancelada': 'bg-red-50/50',
 };
 
 interface KanbanColumnProps {

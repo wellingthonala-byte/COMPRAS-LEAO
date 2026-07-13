@@ -16,8 +16,9 @@ const priorityBorderColor: Record<string, string> = {
 };
 
 export function KanbanCard({ request, onClick }: KanbanCardProps) {
-  const borderColor = priorityBorderColor[request.priority];
-  const isOverdue = new Date(request.deliveryForecast) < new Date() && request.status !== 'Finalizado';
+  const isCancelled = request.status === 'Cancelada';
+  const borderColor = isCancelled ? 'border-l-slate-300' : priorityBorderColor[request.priority];
+  const isOverdue = new Date(request.deliveryForecast + 'T23:59:59') < new Date() && request.status !== 'Finalizado' && !isCancelled;
   const dateFormatted = new Date(request.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const firstItem = request.items[0];
   const isAwaitingApproval = request.status === 'Em Aprovação' && !request.approvedBy;
@@ -26,7 +27,7 @@ export function KanbanCard({ request, onClick }: KanbanCardProps) {
   return (
     <div
       onClick={onClick}
-      className={`bg-white rounded-xl border border-slate-200 border-l-4 ${borderColor} p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group ${isAwaitingApproval ? 'ring-1 ring-yellow-300' : ''} ${openObjections > 0 ? 'ring-1 ring-orange-300' : ''}`}
+      className={`bg-white rounded-xl border border-slate-200 border-l-4 ${borderColor} p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group ${isAwaitingApproval ? 'ring-1 ring-yellow-300' : ''} ${openObjections > 0 ? 'ring-1 ring-orange-300' : ''} ${isOverdue ? 'ring-1 ring-red-300' : ''} ${isCancelled ? 'opacity-70' : ''}`}
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <PriorityBadge priority={request.priority} />
@@ -61,7 +62,20 @@ export function KanbanCard({ request, onClick }: KanbanCardProps) {
         </div>
       )}
 
-      {isAwaitingApproval && (
+      {isOverdue && (
+        <div className="mb-2 px-2 py-1 bg-red-50 border border-red-200 rounded-lg flex items-center gap-1.5">
+          <Calendar size={11} className="text-red-500 flex-shrink-0" />
+          <p className="text-xs text-red-700 font-medium">Entrega atrasada — previsto {dateFormatted}</p>
+        </div>
+      )}
+
+      {isCancelled && (
+        <div className="mb-2 px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg">
+          <p className="text-xs text-slate-500 font-medium">Cancelada{request.cancelledBy ? ` por ${request.cancelledBy}` : ''}</p>
+        </div>
+      )}
+
+      {isAwaitingApproval && !isCancelled && (
         <div className="mb-2 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-xs text-yellow-700 font-medium">⏳ Aguardando aprovação do gestor</p>
         </div>

@@ -138,9 +138,10 @@ export function DashboardPage({ requests }: DashboardPageProps) {
 
   const total = requests.length;
   const finalized = requests.filter((r) => r.status === 'Finalizado').length;
-  const open = requests.filter((r) => r.status !== 'Finalizado').length;
-  const machineStopped = requests.filter((r) => r.priority === 'Máquina Parada' && r.status !== 'Finalizado').length;
-  const overdue = requests.filter((r) => r.status !== 'Finalizado' && new Date(r.deliveryForecast) < new Date()).length;
+  const isActive = (r: PurchaseRequest) => r.status !== 'Finalizado' && r.status !== 'Cancelada';
+  const open = requests.filter(isActive).length;
+  const machineStopped = requests.filter((r) => r.priority === 'Máquina Parada' && isActive(r)).length;
+  const overdue = requests.filter((r) => isActive(r) && new Date(r.deliveryForecast) < new Date()).length;
   const totalValue = requests.reduce((sum, r) => sum + (r.value || 0), 0);
   const avgValue = total > 0 ? totalValue / total : 0;
   const maxRequest = requests.reduce((max, r) => ((r.value || 0) > (max?.value || 0) ? r : max), requests[0]);

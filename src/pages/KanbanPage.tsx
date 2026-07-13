@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Filter, X } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
@@ -25,6 +25,26 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
 
   const selectedRequest = requests.find((r) => r.id === selectedId);
 
+  // Alerta automático de entregas atrasadas (uma notificação por solicitação por dia)
+  useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const overdue = requests.filter(
+      (r) => r.status !== 'Finalizado' && r.status !== 'Cancelada' &&
+        new Date(r.deliveryForecast + 'T23:59:59') < new Date()
+    );
+    overdue.forEach((r) => {
+      const key = `overdue-alert-${r.id}-${today}`;
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, '1');
+      sendNotification({
+        title: `⏰ ${r.number} — Entrega atrasada`,
+        message: `Previsão era ${new Date(r.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR')} e a solicitação de ${r.requester} ainda está em "${r.status}".`,
+        priority: 4,
+        tags: ['alarm_clock'],
+      });
+    });
+  }, [requests]);
+
   const filtered = useMemo(() => {
     return requests.filter((r) => {
       const matchSearch =
@@ -39,19 +59,14 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   }, [requests, search, filterPriority, filterSector]);
 
   const handleAdvanceStatus = (id: string) => {
+    const req = requests.find((r) => r.id === id);
+    if (!req) return;
+    const idx = STATUS_ORDER.indexOf(req.status);
+    if (idx === -1 || idx >= STATUS_ORDER.length - 1) return;
+    const nextStatus = STATUS_ORDER[idx + 1];
     setRequests((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        const idx = STATUS_ORDER.indexOf(r.status);
-        if (idx >= STATUS_ORDER.length - 1) return r;
-        const nextStatus = STATUS_ORDER[idx + 1];
-        sendNotification({
-          title: `📦 ${r.number} — ${nextStatus}`,
-          message: `Solicitação de ${r.requester} (${r.sector}) avançou para "${nextStatus}".`,
-          priority: r.priority === 'Máquina Parada' ? 5 : r.priority === 'Urgente' ? 4 : 3,
-          tags: ['package'],
-        });
-        return {
+      prev.map((r) =>
+        r.id !== id ? r : {
           ...r,
           status: nextStatus,
           history: [
@@ -59,15 +74,54 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
             {
               id: `h-${Date.now()}`,
               date: new Date().toISOString(),
-              user: 'Alefy Alves',
+              user: currentUser.name,
               action: 'Status alterado',
               from: r.status,
               to: nextStatus,
             },
           ],
-        };
-      })
+        }
+      )
     );
+    sendNotification({
+      title: `📦 ${req.number} — ${nextStatus}`,
+      message: `Solicitação de ${req.requester} (${req.sector}) avançou para "${nextStatus}".`,
+      priority: req.priority === 'Máquina Parada' ? 5 : req.priority === 'Urgente' ? 4 : 3,
+      tags: ['package'],
+    });
+  };
+
+  const handleCancel = (id: string, reason: string) => {
+    const req = requests.find((r) => r.id === id);
+    if (!req || req.status === 'Cancelada' || req.status === 'Finalizado') return;
+    setRequests((prev) =>
+      prev.map((r) =>
+        r.id !== id ? r : {
+          ...r,
+          status: 'Cancelada' as Status,
+          cancelledBy: currentUser.name,
+          cancelledAt: new Date().toISOString(),
+          cancelReason: reason,
+          history: [
+            ...r.history,
+            {
+              id: `h-${Date.now()}`,
+              date: new Date().toISOString(),
+              user: currentUser.name,
+              action: `Solicitação cancelada — Motivo: ${reason}`,
+              from: r.status,
+              to: 'Cancelada' as Status,
+            },
+          ],
+        }
+      )
+    );
+    sendNotification({
+      title: `🚫 ${req.number} — Cancelada`,
+      message: `${currentUser.name} cancelou a solicitação de ${req.requester}. Motivo: ${reason}`,
+      priority: 3,
+      tags: ['no_entry'],
+    });
   };
 
   const handleEdit = (id: string, fields: Partial<import('../types').PurchaseRequest>) => {
@@ -147,7 +201,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
         {/* Board */}
         <div className="flex-1 overflow-auto">
           <div className="flex gap-4 p-6 min-w-max" style={{ minHeight: '100%' }}>
-            {STATUS_ORDER.map((status) => (
+            {[...STATUS_ORDER, 'Cancelada'].map((status) => (
               <KanbanColumn
                 key={status}
                 status={status as Status}
@@ -167,6 +221,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
           onAdvanceStatus={(id) => { handleAdvanceStatus(id); setSelectedId(null); }}
           onApprove={(id, name, approvalId) => { handleApprove(id, name, approvalId); }}
           onEdit={handleEdit}
+          onCancel={(id, reason) => { handleCancel(id, reason); setSelectedId(null); }}
         />
       )}
     </div>

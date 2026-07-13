@@ -15,6 +15,7 @@ const statusConfig: Record<Status, { label: string; className: string }> = {
   'Em Serviço': { label: 'Em Serviço', className: 'bg-purple-100 text-purple-700' },
   'Disponível para Retirada': { label: 'Disponível', className: 'bg-teal-100 text-teal-700' },
   'Finalizado': { label: 'Finalizado', className: 'bg-emerald-100 text-emerald-700' },
+  'Cancelada': { label: 'Cancelada', className: 'bg-red-100 text-red-700' },
 };
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
