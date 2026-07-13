@@ -1,5 +1,28 @@
-const NTFY_TOPIC = 'clleao9274';
-const NTFY_URL = `https://ntfy.sh/${NTFY_TOPIC}`;
+const DEFAULT_TOPIC = 'clleao9274';
+
+export function getNtfyTopic(): string {
+  try {
+    const raw = localStorage.getItem('compras-leao-settings');
+    if (raw) {
+      const topic = JSON.parse(raw)?.notifications?.ntfyTopic;
+      if (typeof topic === 'string' && topic.trim()) return topic.trim();
+    }
+  } catch { /* usa padrão */ }
+  return DEFAULT_TOPIC;
+}
+
+export function isPushEnabled(): boolean {
+  try {
+    const raw = localStorage.getItem('compras-leao-settings');
+    if (raw) {
+      const enabled = JSON.parse(raw)?.notifications?.pushEnabled;
+      if (typeof enabled === 'boolean') return enabled;
+    }
+  } catch { /* usa padrão */ }
+  return true;
+}
+
+const NTFY_TOPIC = DEFAULT_TOPIC;
 
 type NtfyPriority = 1 | 2 | 3 | 4 | 5;
 
@@ -16,10 +39,11 @@ function buildUrl(title: string, priority: number, tags: string[]): string {
     priority: String(priority),
     ...(tags.length > 0 ? { tags: tags.join(',') } : {}),
   });
-  return `${NTFY_URL}?${params.toString()}`;
+  return `https://ntfy.sh/${getNtfyTopic()}?${params.toString()}`;
 }
 
 export async function sendNotification({ title, message, priority = 3, tags = [] }: NtfyOptions) {
+  if (!isPushEnabled()) return;
   try {
     await fetch(buildUrl(title, priority, tags), {
       method: 'POST',

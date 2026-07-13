@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { NewRequestPage } from './pages/NewRequestPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { SettingsPage } from './pages/SettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { mockRequests } from './data/mockData';
 import { PurchaseRequest } from './types';
@@ -60,7 +61,7 @@ export default function App() {
         <Route path="/nova-solicitacao" element={<NewRequestPage requests={requests} currentUser={currentUser} onAdd={(r) => setRequests((prev) => [r, ...prev])} />} />
         <Route path="/ordens" element={<PlaceholderPage title="Ordens de Serviço" />} />
         <Route path="/relatorios" element={<ReportsPage requests={requests} />} />
-        <Route path="/configuracoes" element={<PlaceholderPage title="Configurações" />} />
+        <Route path="/configuracoes" element={<SettingsPage currentUser={currentUser} requests={requests} />} />
       </Routes>
     </BrowserRouter>
   );
