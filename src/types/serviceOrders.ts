@@ -1,12 +1,17 @@
 export type OSStatus =
-  | 'Aberta' | 'Em Análise' | 'Aguardando Aprovação' | 'Aguardando Peças'
-  | 'Em Execução' | 'Em Testes' | 'Concluída' | 'Cancelada';
+  | 'Aberta' | 'Aguardando Aprovação' | 'Programada' | 'Em Execução'
+  | 'Pausada' | 'Finalizada' | 'Faturada' | 'Cancelada';
 
 export type MaintenanceType = 'Corretiva' | 'Preventiva' | 'Preditiva' | 'Melhoria';
 export type OSPriority = 'Baixa' | 'Média' | 'Alta' | 'Crítica';
 
+/** Fluxo linear; Pausada e Cancelada são estados laterais. */
 export const OS_FLOW: OSStatus[] = [
-  'Aberta', 'Em Análise', 'Aguardando Aprovação', 'Aguardando Peças', 'Em Execução', 'Em Testes', 'Concluída',
+  'Aberta', 'Aguardando Aprovação', 'Programada', 'Em Execução', 'Finalizada', 'Faturada',
+];
+
+export const OS_COLUMNS: OSStatus[] = [
+  'Aberta', 'Aguardando Aprovação', 'Programada', 'Em Execução', 'Pausada', 'Finalizada', 'Faturada', 'Cancelada',
 ];
 
 export interface OSEquipment {
@@ -45,6 +50,12 @@ export interface OSComment {
   date: string;
 }
 
+export interface OSChecklistItem {
+  id: string;
+  text: string;
+  done: boolean;
+}
+
 export interface OSEvent {
   id: string;
   date: string;
@@ -61,35 +72,54 @@ export interface ServiceOrder {
   description: string;
   type: MaintenanceType;
   category: string;
+  customer?: string;
   equipment: OSEquipment;
   costCenter: string;
   requester: string;
   technician: string;
   priority: OSPriority;
   slaHours: number;
+  estimatedValue?: number;
   openedAt: string;
   dueDate: string;
   startedAt?: string;
   completedAt?: string;
   status: OSStatus;
+  /** status anterior à pausa, para retomar corretamente */
+  pausedFrom?: OSStatus;
   observations?: string;
   cancelReason?: string;
   cancelledBy?: string;
   materials: OSMaterial[];
   labor: OSLabor[];
   comments: OSComment[];
+  checklist: OSChecklistItem[];
   history: OSEvent[];
   purchaseRequestId?: string;
 }
 
 const OS_KEY = 'compras-leao-service-orders';
 
+/** Migra registros salvos com os status antigos do módulo. */
+const LEGACY_STATUS: Record<string, OSStatus> = {
+  'Em Análise': 'Aberta',
+  'Aguardando Peças': 'Programada',
+  'Em Testes': 'Em Execução',
+  'Concluída': 'Finalizada',
+};
+
 export function loadServiceOrders(): ServiceOrder[] {
   try {
     const raw = localStorage.getItem(OS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        return parsed.map((o) => ({
+          checklist: [],
+          ...o,
+          status: LEGACY_STATUS[o.status] ?? o.status,
+        }));
+      }
     }
   } catch { /* dados corrompidos: recomeça vazio */ }
   return [];
@@ -116,13 +146,17 @@ export function osCost(os: ServiceOrder): number {
   return mat + lab;
 }
 
+export function osIsClosed(os: ServiceOrder): boolean {
+  return os.status === 'Finalizada' || os.status === 'Faturada' || os.status === 'Cancelada';
+}
+
 export function osIsOverdue(os: ServiceOrder): boolean {
-  if (os.status === 'Concluída' || os.status === 'Cancelada') return false;
+  if (osIsClosed(os)) return false;
   return new Date(os.dueDate + 'T23:59:59') < new Date();
 }
 
 export function osSlaMet(os: ServiceOrder): boolean | null {
-  if (os.status !== 'Concluída' || !os.completedAt) return null;
+  if (!os.completedAt || (os.status !== 'Finalizada' && os.status !== 'Faturada')) return null;
   const elapsed = (new Date(os.completedAt).getTime() - new Date(os.openedAt).getTime()) / 3600000;
   return elapsed <= os.slaHours;
 }
@@ -131,4 +165,8 @@ export function osElapsedHours(os: ServiceOrder): number | null {
   const end = os.completedAt ?? (os.status === 'Cancelada' ? undefined : new Date().toISOString());
   if (!end) return null;
   return (new Date(end).getTime() - new Date(os.openedAt).getTime()) / 3600000;
+}
+
+export function osLastUpdate(os: ServiceOrder): string {
+  return os.history.length ? os.history[os.history.length - 1].date : os.openedAt;
 }
