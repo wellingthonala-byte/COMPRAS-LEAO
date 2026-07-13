@@ -1,5 +1,7 @@
-import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut } from 'lucide-react';
+import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut, ShieldCheck } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
+import { AppUser } from '../../data/users';
+import { colorFromInitials } from '../../utils/colors';
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
@@ -9,7 +11,12 @@ const navItems = [
   { icon: Settings, label: 'Configurações', to: '/configuracoes' },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  currentUser: AppUser;
+  onLogout: () => void;
+}
+
+export function Sidebar({ currentUser, onLogout }: SidebarProps) {
   return (
     <aside className="w-60 bg-white border-r border-slate-200 flex flex-col h-screen fixed left-0 top-0 z-30">
       <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
@@ -48,14 +55,27 @@ export function Sidebar() {
 
       <div className="px-3 py-4 border-t border-slate-100">
         <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center text-white text-sm font-semibold flex-shrink-0">
-            AA
+          <div
+            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
+            style={{ backgroundColor: colorFromInitials(currentUser.initials) }}
+          >
+            {currentUser.initials}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-slate-700 truncate">Alefy Alves</p>
-            <p className="text-xs text-slate-400 truncate">Compras</p>
+            <p className="text-sm font-medium text-slate-700 truncate">{currentUser.name}</p>
+            <div className="flex items-center gap-1 mt-0.5">
+              {currentUser.role === 'gestor' ? (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
+                  <ShieldCheck size={10} /> Gestor
+                </span>
+              ) : currentUser.role === 'comprador' ? (
+                <span className="text-[10px] text-violet-600 font-medium">Comprador</span>
+              ) : (
+                <span className="text-[10px] text-slate-400">Solicitante</span>
+              )}
+            </div>
           </div>
-          <button className="text-slate-400 hover:text-slate-600 transition-colors">
+          <button onClick={onLogout} className="text-slate-400 hover:text-red-500 transition-colors" title="Sair">
             <LogOut size={16} />
           </button>
         </div>

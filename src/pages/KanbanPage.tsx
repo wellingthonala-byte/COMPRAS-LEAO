@@ -6,6 +6,7 @@ import { RequestDetailModal } from '../components/Modals/RequestDetailModal';
 import { STATUS_ORDER } from '../data/mockData';
 import { PurchaseRequest, Priority, Sector, Status } from '../types';
 import { sendNotification } from '../utils/notify';
+import { AppUser } from '../data/users';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
 const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
@@ -13,9 +14,10 @@ const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI',
 interface KanbanPageProps {
   requests: PurchaseRequest[];
   setRequests: React.Dispatch<React.SetStateAction<PurchaseRequest[]>>;
+  currentUser: AppUser;
 }
 
-export function KanbanPage({ requests, setRequests }: KanbanPageProps) {
+export function KanbanPage({ requests, setRequests, currentUser }: KanbanPageProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | ''>('');
@@ -161,6 +163,7 @@ export function KanbanPage({ requests, setRequests }: KanbanPageProps) {
         <RequestDetailModal
           request={selectedRequest}
           onClose={() => setSelectedId(null)}
+          currentUser={currentUser}
           onAdvanceStatus={(id) => { handleAdvanceStatus(id); setSelectedId(null); }}
           onApprove={(id, name, approvalId) => { handleApprove(id, name, approvalId); }}
           onEdit={handleEdit}

@@ -5,6 +5,7 @@ import { Header } from '../components/Layout/Header';
 import { Priority, Sector, PurchaseRequest } from '../types';
 import { generateRequestNumber } from '../utils/numbering';
 import { sendNotification } from '../utils/notify';
+import { AppUser } from '../data/users';
 
 interface ItemForm {
   id: string;
@@ -19,6 +20,7 @@ interface ItemForm {
 
 interface NewRequestPageProps {
   requests: PurchaseRequest[];
+  currentUser: AppUser;
   onAdd: (r: PurchaseRequest) => void;
 }
 
@@ -37,9 +39,9 @@ function getInitials(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
+export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageProps) {
   const navigate = useNavigate();
-  const [requester, setRequester] = useState('');
+  const [requester, setRequester] = useState(currentUser.name);
   const [sector, setSector] = useState<Sector | ''>('');
   const [priority, setPriority] = useState<Priority>('Não Urgente');
   const [observations, setObservations] = useState('');
@@ -208,12 +210,6 @@ export function NewRequestPage({ requests, onAdd }: NewRequestPageProps) {
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700">
                         {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
                       </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Previsão do Item</label>
-                      <input type="date" value={item.deliveryForecast}
-                        onChange={(e) => updateItem(item.id, 'deliveryForecast', e.target.value)}
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-xs font-medium text-slate-600 mb-1">Especificação Técnica</label>
