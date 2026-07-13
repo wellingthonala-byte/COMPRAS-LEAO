@@ -4,9 +4,9 @@ import { Sidebar } from './components/Layout/Sidebar';
 import { KanbanPage } from './pages/KanbanPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { NewRequestPage } from './pages/NewRequestPage';
-import { PlaceholderPage } from './pages/PlaceholderPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ServiceOrdersPage } from './pages/ServiceOrdersPage';
 import { LoginPage } from './pages/LoginPage';
 import { mockRequests } from './data/mockData';
 import { PurchaseRequest } from './types';
@@ -59,7 +59,7 @@ export default function App() {
         <Route path="/" element={<KanbanPage requests={requests} setRequests={setRequests} currentUser={currentUser} />} />
         <Route path="/dashboard" element={<DashboardPage requests={requests} />} />
         <Route path="/nova-solicitacao" element={<NewRequestPage requests={requests} currentUser={currentUser} onAdd={(r) => setRequests((prev) => [r, ...prev])} />} />
-        <Route path="/ordens" element={<PlaceholderPage title="Ordens de Serviço" />} />
+        <Route path="/ordens" element={<ServiceOrdersPage currentUser={currentUser} requests={requests} onCreatePurchaseRequest={(r) => setRequests((prev) => [r, ...prev])} />} />
         <Route path="/relatorios" element={<ReportsPage requests={requests} />} />
         <Route path="/configuracoes" element={<SettingsPage currentUser={currentUser} requests={requests} />} />
       </Routes>
