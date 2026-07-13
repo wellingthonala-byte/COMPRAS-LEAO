@@ -1,4 +1,5 @@
-import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw } from 'lucide-react';
+import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw, Printer } from 'lucide-react';
+import { printPurchaseRequest } from '../../utils/printDocument';
 import { useState } from 'react';
 import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
@@ -196,9 +197,15 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-400">
-            <X size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => printPurchaseRequest(request, currentUser.name)} title="Imprimir / Gerar PDF"
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 rounded-lg transition-colors">
+              <Printer size={13} /> Imprimir
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-400" aria-label="Fechar">
+              <X size={20} />
+            </button>
+          </div>
         </div>
 
         {/* Timeline */}

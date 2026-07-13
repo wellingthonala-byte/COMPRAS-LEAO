@@ -12,6 +12,7 @@ import { KanbanColumnShell } from '../components/Kanban/KanbanColumnShell';
 import { colorFromInitials } from '../utils/colors';
 import { sendNotification } from '../utils/notify';
 import { generateRequestNumber } from '../utils/numbering';
+import { printServiceOrder } from '../utils/printDocument';
 import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
 import {
@@ -928,8 +929,10 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
             <div className="flex items-center gap-1">
               <button onClick={onDuplicate} title="Duplicar O.S." aria-label="Duplicar O.S."
                 className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Copy size={15} /></button>
-              <button onClick={() => window.print()} title="Gerar PDF / Imprimir" aria-label="Imprimir"
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg"><Printer size={15} /></button>
+              <button onClick={() => printServiceOrder(os, currentUser.name)} title="Imprimir / Gerar PDF" aria-label="Imprimir O.S."
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 rounded-lg transition-colors">
+                <Printer size={13} /> Imprimir
+              </button>
               <button onClick={onClose} aria-label="Fechar" className="p-2 text-slate-400 hover:text-slate-600"><X size={17} /></button>
             </div>
           </div>
