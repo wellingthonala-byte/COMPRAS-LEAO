@@ -4,7 +4,7 @@ import {
   CheckCircle2, XCircle, AlarmClock, Timer, Gauge, DollarSign, Users, Plus, Search,
   X, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Columns3, Download,
   FileSpreadsheet, Printer, ArrowRight, MessageSquare, Clock, Paperclip,
-  Trash2, ShoppingCart, HardHat, Info, FilterX, Eye,
+  Trash2, ShoppingCart, HardHat, Info, FilterX, Eye, Kanban, List, Calendar,
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { colorFromInitials } from '../utils/colors';
@@ -174,6 +174,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [view, setView] = useState<'kanban' | 'lista'>('kanban');
 
   // filtros
   const [period, setPeriod] = useState<PeriodKey>('todos');
@@ -452,10 +453,22 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
               <FilterX size={13} /> Limpar
             </button>
           )}
-          <button onClick={() => setShowNew(true)}
-            className="ml-auto flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm shadow-violet-200">
-            <Plus size={15} /> Nova O.S.
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden" role="tablist" aria-label="Modo de visualização">
+              <button onClick={() => setView('kanban')} role="tab" aria-selected={view === 'kanban'}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${view === 'kanban' ? 'bg-violet-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+                <Kanban size={13} /> Kanban
+              </button>
+              <button onClick={() => setView('lista')} role="tab" aria-selected={view === 'lista'}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${view === 'lista' ? 'bg-violet-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+                <List size={13} /> Lista
+              </button>
+            </div>
+            <button onClick={() => setShowNew(true)}
+              className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm shadow-violet-200">
+              <Plus size={15} /> Nova O.S.
+            </button>
+          </div>
         </div>
 
         {orders.length === 0 ? (
@@ -467,6 +480,30 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
               className="inline-flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium">
               <Plus size={15} /> Criar primeira O.S.
             </button>
+          </div>
+        ) : view === 'kanban' ? (
+          <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6">
+            <div className="flex gap-4 min-w-max pb-4">
+              {([...OS_FLOW, 'Cancelada'] as OSStatus[]).map((status) => {
+                const colOrders = filtered.filter((o) => o.status === status);
+                return (
+                  <div key={status} className="flex-shrink-0 w-72 flex flex-col rounded-2xl bg-white border border-slate-200 self-start">
+                    <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200">
+                      <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: STATUS_COLORS[status] }} />
+                      <span className="text-sm font-semibold text-slate-700">{status}</span>
+                      <span className="bg-slate-50 text-slate-500 text-xs font-bold px-2 py-0.5 rounded-full border border-slate-200">{colOrders.length}</span>
+                    </div>
+                    <div className="p-3 space-y-3">
+                      {colOrders.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-8 text-slate-300">
+                          <p className="text-xs">Nenhuma O.S.</p>
+                        </div>
+                      ) : colOrders.map((o) => <OSKanbanCard key={o.id} os={o} onClick={() => setSelectedId(o.id)} />)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         ) : (
           <>
@@ -532,6 +569,88 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
           onRequestParts={() => handleRequestParts(selected)}
           addEvent={addEvent}
         />
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Card do Kanban de O.S. — mesmo padrão visual do Kanban de Compras   */
+/* ------------------------------------------------------------------ */
+const PRIORITY_BORDER: Record<OSPriority, string> = {
+  'Crítica': 'border-l-red-500', 'Alta': 'border-l-orange-400', 'Média': 'border-l-blue-400', 'Baixa': 'border-l-slate-300',
+};
+
+function OSKanbanCard({ os, onClick }: { os: ServiceOrder; onClick: () => void }) {
+  const isCancelled = os.status === 'Cancelada';
+  const overdue = osIsOverdue(os);
+  const cost = osCost(os);
+  const initials = os.requester.trim().slice(0, 2).toUpperCase();
+  return (
+    <div onClick={onClick}
+      className={`bg-white rounded-xl border border-slate-200 border-l-4 ${isCancelled ? 'border-l-slate-300 opacity-70' : PRIORITY_BORDER[os.priority]} p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group ${overdue ? 'ring-1 ring-red-300' : ''} ${os.status === 'Aguardando Aprovação' ? 'ring-1 ring-amber-300' : ''}`}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${PRIORITY_BADGE[os.priority]}`}>{os.priority}</span>
+        <span className="text-xs font-bold text-slate-400 group-hover:text-violet-600 transition-colors">{os.number}</span>
+      </div>
+
+      <p className="text-sm font-semibold text-slate-800 mb-1 line-clamp-2">{os.title}</p>
+
+      {os.equipment.name && (
+        <div className="flex items-center gap-1 mb-2 bg-violet-50 rounded-lg px-2 py-1">
+          <Wrench size={11} className="text-violet-500 flex-shrink-0" />
+          <span className="text-xs text-violet-700 font-medium truncate">{os.equipment.name}</span>
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5 mb-2">
+        <HardHat size={12} className="text-slate-300" />
+        <span className="text-xs text-slate-500">{os.technician || 'Sem técnico'} · {os.category}</span>
+      </div>
+
+      {overdue && (
+        <div className="mb-2 px-2 py-1 bg-red-50 border border-red-200 rounded-lg flex items-center gap-1.5">
+          <AlarmClock size={11} className="text-red-500 flex-shrink-0" />
+          <p className="text-xs text-red-700 font-medium">Atrasada — prazo {fmtDate(os.dueDate)}</p>
+        </div>
+      )}
+
+      {os.status === 'Aguardando Aprovação' && (
+        <div className="mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded-lg">
+          <p className="text-xs text-amber-700 font-medium">⏳ Aguardando aprovação do gestor</p>
+        </div>
+      )}
+
+      {os.purchaseRequestId && (
+        <div className="mb-2 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center gap-1.5">
+          <ShoppingCart size={11} className="text-emerald-600 flex-shrink-0" />
+          <p className="text-xs text-emerald-700 font-medium">Peças solicitadas no Compras</p>
+        </div>
+      )}
+
+      {isCancelled && (
+        <div className="mb-2 px-2 py-1 bg-slate-100 border border-slate-200 rounded-lg">
+          <p className="text-xs text-slate-500 font-medium">Cancelada{os.cancelledBy ? ` por ${os.cancelledBy}` : ''}</p>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+        <div className="flex items-center gap-2">
+          <span className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0"
+            style={{ backgroundColor: colorFromInitials(initials) }}>{initials}</span>
+          <span className="text-xs text-slate-600 font-medium">{os.requester.split(' ')[0]}</span>
+        </div>
+        <div className={`flex items-center gap-1 ${overdue ? 'text-red-500' : 'text-slate-400'}`}>
+          <Calendar size={11} />
+          <span className="text-xs font-medium">{fmtDate(os.dueDate)}</span>
+        </div>
+      </div>
+
+      {cost > 0 && (
+        <div className="mt-2 pt-2 border-t border-slate-50 flex items-center gap-1">
+          <DollarSign size={11} className="text-violet-400" />
+          <span className="text-xs font-semibold text-violet-600">{fmtBRL(cost)}</span>
+        </div>
       )}
     </div>
   );
