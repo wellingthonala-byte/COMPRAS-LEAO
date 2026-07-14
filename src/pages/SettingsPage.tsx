@@ -1306,14 +1306,20 @@ function MigrationTool() {
           <input value={oldUrl} onChange={(e) => setOldUrl(e.target.value)} placeholder="https://xxxxx.supabase.co" className={input} disabled={running} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Secret key do projeto ANTIGO (só leitura na cópia)</label>
-          <input type="password" value={oldSecret} onChange={(e) => setOldSecret(e.target.value)} placeholder="sb_secret_... ou service_role (eyJ...)" className={input} disabled={running} />
+          <label className="block text-xs font-medium text-slate-600 mb-1">Chave service_role LEGADA do projeto ANTIGO (começa com eyJ...)</label>
+          <input type="password" value={oldSecret} onChange={(e) => setOldSecret(e.target.value)} placeholder="eyJhbGciOi..." className={input} disabled={running} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Secret key do projeto NOVO (destino)</label>
-          <input type="password" value={newSecret} onChange={(e) => setNewSecret(e.target.value)} placeholder="sb_secret_..." className={input} disabled={running} />
+          <label className="block text-xs font-medium text-slate-600 mb-1">Chave service_role LEGADA do projeto NOVO (começa com eyJ...)</label>
+          <input type="password" value={newSecret} onChange={(e) => setNewSecret(e.target.value)} placeholder="eyJhbGciOi..." className={input} disabled={running} />
         </div>
-        <PendingBanner text="Antes de migrar, execute o arquivo supabase/clone-schema.sql no SQL Editor do projeto NOVO (cria as tabelas). As chaves são usadas somente aqui no seu navegador e não ficam salvas." />
+        {(oldSecret.trim().startsWith('sb_secret') || newSecret.trim().startsWith('sb_secret')) && (
+          <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
+            <AlertTriangle size={14} className="text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-700">Chaves <strong>sb_secret_...</strong> são bloqueadas pelo Supabase no navegador. Use as chaves <strong>legadas</strong>: no painel, Settings → API Keys → aba <strong>"Legacy API Keys"</strong> → copie a <strong>service_role</strong> (formato eyJ...).</p>
+          </div>
+        )}
+        <PendingBanner text="Onde achar: painel do Supabase → Settings → API Keys → aba 'Legacy API Keys' → service_role (clique em Reveal). Antes de migrar, execute supabase/clone-schema.sql no SQL Editor do projeto NOVO. As chaves são usadas somente no seu navegador e não ficam salvas." />
         {!confirming ? (
           <button onClick={() => setConfirming(true)} disabled={!valid || running}
             className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium">
