@@ -109,6 +109,15 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   };
 
   const handleSaveItemEdit = (itemId: string) => {
+    const original = request.items.find((i) => i.id === itemId);
+    const changes: string[] = [];
+    if (original) {
+      if (original.description !== String(itemDraft.description)) changes.push(`descrição: "${original.description}" → "${itemDraft.description}"`);
+      if (original.quantity !== Number(itemDraft.quantity)) changes.push(`quantidade: ${original.quantity} → ${itemDraft.quantity}`);
+      if (original.application !== String(itemDraft.application)) changes.push(`aplicação: "${original.application || '—'}" → "${itemDraft.application || '—'}"`);
+      if ((original.technicalSpec || '') !== String(itemDraft.technicalSpec)) changes.push('especificação técnica alterada');
+      if ((original.observations || '') !== String(itemDraft.observations)) changes.push('observações alteradas');
+    }
     const updatedItems = request.items.map((item) => {
       if (item.id !== itemId) return item;
       return {
@@ -120,7 +129,18 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
         observations: String(itemDraft.observations) || undefined,
       };
     });
-    onEdit(request.id, { items: updatedItems });
+    onEdit(request.id, {
+      items: updatedItems,
+      history: changes.length === 0 ? request.history : [
+        ...request.history,
+        {
+          id: `h-${Date.now()}`,
+          date: new Date().toISOString(),
+          user: currentUser.name,
+          action: `Item editado (${changes.join('; ')})`,
+        },
+      ],
+    });
     setEditingItemId(null);
     setItemDraft({});
   };
@@ -423,6 +443,12 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                       <button onClick={() => handleStartEditItem(item)}
                         className="w-full mb-3 flex items-center justify-center gap-2 text-sm text-white font-semibold bg-orange-500 hover:bg-orange-600 border border-orange-500 px-3 py-2 rounded-lg transition-colors">
                         <Edit3 size={13} /> Editar e Corrigir este Item
+                      </button>
+                    )}
+                    {openObjections.length === 0 && editingItemId !== item.id && currentUser.role === 'comprador' && !isCancelled && (
+                      <button onClick={() => handleStartEditItem(item)}
+                        className="mb-3 flex items-center gap-1.5 text-xs text-violet-600 hover:text-violet-800 font-medium border border-violet-200 hover:border-violet-400 px-3 py-1.5 rounded-lg transition-colors">
+                        <Edit3 size={12} /> Editar Item
                       </button>
                     )}
 

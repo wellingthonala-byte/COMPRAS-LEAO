@@ -5,7 +5,7 @@ import {
   ChevronDown, Columns3, Download, FileSpreadsheet, Printer, ArrowRight,
   MessageSquare, Clock, Paperclip, Trash2, ShoppingCart, HardHat, Info, FilterX,
   Eye, Kanban, List, Calendar, RefreshCw, Copy, Pause, Play, ListChecks,
-  PenLine, Camera,
+  PenLine, Camera, Pencil,
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { KanbanColumnShell } from '../components/Kanban/KanbanColumnShell';
@@ -96,6 +96,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [duplicating, setDuplicating] = useState<ServiceOrder | null>(null);
+  const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<'kanban' | 'lista'>('kanban');
 
@@ -241,6 +242,34 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
       updateOrder(id, (o) => addEvent({ ...o, status: 'Pausada', pausedFrom: os.status }, 'O.S. pausada', os.status, 'Pausada'));
       sendNotification({ title: `⏸️ ${os.number} — Pausada`, message: `"${os.title}" foi pausada.`, priority: 3, tags: ['pause_button'] });
     }
+  };
+
+  const handleSaveEdit = (updated: ServiceOrder) => {
+    const old = orders.find((o) => o.id === updated.id);
+    if (!old) return;
+    const diffs: string[] = [];
+    const cmp = (label: string, a: unknown, b: unknown) => { if ((a ?? '') !== (b ?? '')) diffs.push(`${label}: "${a ?? '—'}" → "${b ?? '—'}"`); };
+    cmp('título', old.title, updated.title);
+    cmp('descrição', old.description, updated.description);
+    cmp('cliente', old.customer, updated.customer);
+    cmp('tipo', old.type, updated.type);
+    cmp('categoria', old.category, updated.category);
+    cmp('prioridade', old.priority, updated.priority);
+    cmp('centro de custo', old.costCenter, updated.costCenter);
+    cmp('técnico', old.technician, updated.technician);
+    cmp('SLA', old.slaHours, updated.slaHours);
+    cmp('valor estimado', old.estimatedValue, updated.estimatedValue);
+    cmp('prazo', old.dueDate, updated.dueDate);
+    cmp('equipamento', old.equipment.name, updated.equipment.name);
+    cmp('localização', old.equipment.location, updated.equipment.location);
+    cmp('link do objeto', old.objectLink, updated.objectLink);
+    cmp('observações', old.observations, updated.observations);
+    if (diffs.length === 0) { setEditingOS(null); showToast('Nenhuma alteração para salvar'); return; }
+    updateOrder(updated.id, (o) => addEvent({ ...o, ...updated, history: o.history, comments: o.comments, materials: o.materials, labor: o.labor, checklist: o.checklist },
+      `O.S. editada por ${currentUser.name} — ${diffs.join('; ')}`));
+    sendNotification({ title: `✏️ ${updated.number} — O.S. editada`, message: `${currentUser.name} alterou: ${diffs.slice(0, 3).join('; ')}${diffs.length > 3 ? '...' : ''}`, priority: 3, tags: ['pencil'] });
+    showToast(`${updated.number} atualizada`);
+    setEditingOS(null);
   };
 
   const handleCancel = (id: string, reason: string) => {
@@ -430,13 +459,15 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
         )}
       </div>
 
-      {(showNew || duplicating) && (
+      {(showNew || duplicating || editingOS) && (
         <NewOSModal
           currentUser={currentUser}
           existingNumbers={orders.map((o) => o.number)}
-          base={duplicating}
-          onClose={() => { setShowNew(false); setDuplicating(null); }}
+          base={editingOS ?? duplicating}
+          editing={!!editingOS}
+          onClose={() => { setShowNew(false); setDuplicating(null); setEditingOS(null); }}
           onCreate={handleCreate}
+          onSaveEdit={handleSaveEdit}
         />
       )}
 
@@ -450,6 +481,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
           onCancel={handleCancel}
           onPauseResume={handlePauseResume}
           onDuplicate={() => { setDuplicating(selected); setSelectedId(null); }}
+          onEditOS={(currentUser.role === 'comprador' || currentUser.role === 'gestor') ? () => { setEditingOS(selected); setSelectedId(null); } : undefined}
           onUpdate={(fn) => updateOrder(selected.id, fn)}
           onRequestParts={() => handleRequestParts(selected)}
           addEvent={addEvent}
@@ -721,9 +753,9 @@ function OrdersTable({ orders, onView, onAdvance, canAdvanceFrom }: {
 /* ================================================================== */
 /* Modal Nova O.S. (também usada para duplicar)                        */
 /* ================================================================== */
-function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
-  currentUser: AppUser; existingNumbers: string[]; base?: ServiceOrder | null;
-  onClose: () => void; onCreate: (os: ServiceOrder) => void;
+function NewOSModal({ currentUser, existingNumbers, base, editing = false, onClose, onCreate, onSaveEdit }: {
+  currentUser: AppUser; existingNumbers: string[]; base?: ServiceOrder | null; editing?: boolean;
+  onClose: () => void; onCreate: (os: ServiceOrder) => void; onSaveEdit?: (os: ServiceOrder) => void;
 }) {
   const users = loadUsers();
   const [f, setF] = useState({
@@ -735,7 +767,7 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
     costCenter: base?.costCenter ?? SECTORS[1], technician: base?.technician ?? '',
     priority: (base?.priority ?? 'Média') as OSPriority, slaHours: String(base?.slaHours ?? 48),
     estimatedValue: base?.estimatedValue ? String(base.estimatedValue) : '',
-    dueDate: '', observations: base?.observations ?? '',
+    dueDate: editing ? (base?.dueDate ?? '') : '', observations: base?.observations ?? '',
     objectLink: base?.objectLink ?? '',
   });
   const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
@@ -743,6 +775,21 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
 
   const submit = () => {
     if (!valid) return;
+    if (editing && base && onSaveEdit) {
+      onSaveEdit({
+        ...base,
+        title: f.title.trim(), description: f.description.trim(),
+        type: f.type, category: f.category, customer: f.customer.trim() || undefined,
+        equipment: { ...base.equipment, code: f.equipCode, name: f.equipName.trim(), model: f.equipModel, manufacturer: f.equipManufacturer, serial: f.equipSerial, patrimony: f.equipPatrimony, location: f.equipLocation },
+        costCenter: f.costCenter, technician: f.technician,
+        priority: f.priority, slaHours: Number(f.slaHours) || 48,
+        estimatedValue: Number(f.estimatedValue) || undefined,
+        dueDate: f.dueDate,
+        observations: f.observations.trim() || undefined,
+        objectLink: normalizeUrl(f.objectLink) ?? undefined,
+      });
+      return;
+    }
     const now = new Date().toISOString();
     onCreate({
       id: crypto.randomUUID(),
@@ -768,7 +815,7 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
     <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-slate-800">{base ? `Duplicar ${base.number}` : 'Nova Ordem de Serviço'}</h3>
+          <h3 className="font-bold text-slate-800">{editing && base ? `Editar ${base.number}` : base ? `Duplicar ${base.number}` : 'Nova Ordem de Serviço'}</h3>
           <button onClick={onClose} aria-label="Fechar" className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
         </div>
 
@@ -856,7 +903,7 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
           <button onClick={submit} disabled={!valid}
             className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-5 py-2 rounded-lg text-sm font-medium">
-            <Plus size={15} /> {base ? 'Duplicar O.S.' : 'Criar O.S.'}
+            <Plus size={15} /> {editing ? 'Salvar Alterações' : base ? 'Duplicar O.S.' : 'Criar O.S.'}
           </button>
         </div>
       </div>
@@ -869,12 +916,13 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
 /* ================================================================== */
 type DrawerTab = 'geral' | 'execucao' | 'comentarios' | 'historico';
 
-function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCancel, onPauseResume, onDuplicate, onUpdate, onRequestParts, addEvent }: {
+function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCancel, onPauseResume, onDuplicate, onEditOS, onUpdate, onRequestParts, addEvent }: {
   os: ServiceOrder; currentUser: AppUser; onClose: () => void;
   onAdvance: (id: string) => void; canAdvanceFrom: (s: OSStatus) => boolean;
   onCancel: (id: string, reason: string) => void;
   onPauseResume: (id: string) => void;
   onDuplicate: () => void;
+  onEditOS?: () => void;
   onUpdate: (fn: (o: ServiceOrder) => ServiceOrder) => void;
   onRequestParts: () => void;
   addEvent: (o: ServiceOrder, action: string, from?: OSStatus, to?: OSStatus) => ServiceOrder;
@@ -951,6 +999,12 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
               {osIsOverdue(os) && <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-red-100 text-red-700">Atrasada</span>}
             </div>
             <div className="flex items-center gap-1">
+              {onEditOS && (
+                <button onClick={onEditOS} title="Editar O.S." aria-label="Editar O.S."
+                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 rounded-lg transition-colors">
+                  <Pencil size={13} /> Editar
+                </button>
+              )}
               <button onClick={onDuplicate} title="Duplicar O.S." aria-label="Duplicar O.S."
                 className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Copy size={15} /></button>
               <button onClick={() => printServiceOrder(os, currentUser.name)} title="Imprimir / Gerar PDF" aria-label="Imprimir O.S."
