@@ -14,6 +14,7 @@ import { sendNotification } from '../utils/notify';
 import { generateRequestNumber } from '../utils/numbering';
 import { printServiceOrder } from '../utils/printDocument';
 import { fetchServiceOrders, upsertServiceOrders } from '../lib/backend';
+import { ObjectLinkInput, ObjectLinkView, normalizeUrl } from '../components/UI/ObjectLink';
 import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
 import {
@@ -735,6 +736,7 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
     priority: (base?.priority ?? 'Média') as OSPriority, slaHours: String(base?.slaHours ?? 48),
     estimatedValue: base?.estimatedValue ? String(base.estimatedValue) : '',
     dueDate: '', observations: base?.observations ?? '',
+    objectLink: base?.objectLink ?? '',
   });
   const set = (k: keyof typeof f) => (v: string) => setF((p) => ({ ...p, [k]: v }));
   const valid = f.title.trim() && f.dueDate && f.equipName.trim();
@@ -753,6 +755,7 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
       estimatedValue: Number(f.estimatedValue) || undefined,
       openedAt: now, dueDate: f.dueDate, status: 'Aberta',
       observations: f.observations.trim() || undefined,
+      objectLink: normalizeUrl(f.objectLink) ?? undefined,
       materials: [], labor: [], comments: [], checklist: [],
       history: [{ id: `e-${Date.now()}`, date: now, user: currentUser.name, action: base ? `O.S. criada (duplicada de ${base.number})` : 'O.S. criada', to: 'Aberta' }],
     });
@@ -837,6 +840,10 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
               <div><label className={label}>Patrimônio</label><input value={f.equipPatrimony} onChange={(e) => set('equipPatrimony')(e.target.value)} className={input} /></div>
               <div className="sm:col-span-2"><label className={label}>Localização</label><input value={f.equipLocation} onChange={(e) => set('equipLocation')(e.target.value)} className={input} placeholder="Ex.: Galpão A — Linha 02" /></div>
             </div>
+          </div>
+
+          <div>
+            <ObjectLinkInput value={f.objectLink} onChange={set('objectLink')} />
           </div>
 
           <div>
@@ -1014,6 +1021,14 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                       </div>
                     ))}
                   </dl>
+                  <div className="flex justify-between gap-2 items-start mt-1.5 text-xs">
+                    <span className="text-slate-400">Link do Objeto</span>
+                    <ObjectLinkView
+                      url={os.objectLink}
+                      onSave={(url) => onUpdate((o) => addEvent({ ...o, objectLink: url },
+                        url ? `Link do objeto ${o.objectLink ? 'alterado' : 'adicionado'}: ${url}` : 'Link do objeto removido'))}
+                    />
+                  </div>
                   {os.description && <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{os.description}</p>}
                 </div>
                 <div className="bg-white rounded-2xl border border-slate-200 p-4">

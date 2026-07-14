@@ -88,6 +88,7 @@ export interface ServiceOrder {
   /** status anterior à pausa, para retomar corretamente */
   pausedFrom?: OSStatus;
   observations?: string;
+  objectLink?: string;
   cancelReason?: string;
   cancelledBy?: string;
   materials: OSMaterial[];

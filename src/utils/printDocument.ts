@@ -346,6 +346,7 @@ export function printPurchaseRequest(r: PurchaseRequest, generatedBy: string): v
       {
         title: 'Outras Informações',
         rows: [
+          ...(r.objectLink ? [['Link do objeto', r.objectLink] as [string, string]] : []),
           ['Categoria', r.items[0]?.application || '—'],
           ['Incluído em', new Date(r.createdAt).toLocaleString('pt-BR')],
           ['Previsão de entrega', new Date(r.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR')],
@@ -437,6 +438,7 @@ export function printServiceOrder(os: ServiceOrder, generatedBy: string): void {
         title: 'Detalhes do Serviço',
         rows: [
           ['Título', os.title],
+          ...(os.objectLink ? [['Link do objeto', os.objectLink] as [string, string]] : []),
           ...(os.description ? [['Descrição', os.description] as [string, string]] : []),
           ['Abertura', new Date(os.openedAt).toLocaleString('pt-BR')],
           ...(os.startedAt ? [['Início da execução', new Date(os.startedAt).toLocaleString('pt-BR')] as [string, string]] : []),

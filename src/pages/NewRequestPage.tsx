@@ -6,6 +6,7 @@ import { Priority, Sector, PurchaseRequest } from '../types';
 import { generateRequestNumber } from '../utils/numbering';
 import { sendNotification } from '../utils/notify';
 import { AppUser } from '../data/users';
+import { ObjectLinkInput, normalizeUrl } from '../components/UI/ObjectLink';
 
 interface ItemForm {
   id: string;
@@ -45,6 +46,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
   const [sector, setSector] = useState<Sector | ''>('');
   const [priority, setPriority] = useState<Priority>('Não Urgente');
   const [observations, setObservations] = useState('');
+  const [objectLink, setObjectLink] = useState('');
   const [items, setItems] = useState<ItemForm[]>([newItem(1)]);
   const [submitted, setSubmitted] = useState(false);
 
@@ -79,6 +81,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
         observations: item.observations || undefined,
       })),
       observations: observations || undefined,
+      objectLink: normalizeUrl(objectLink) ?? undefined,
       history: [{ id: `h-${Date.now()}`, date: now, user: requester, action: 'Solicitação criada', to: 'Nova Solicitação' }],
     };
     onAdd(newRequest);
@@ -148,6 +151,9 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700">
                   {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
+              </div>
+              <div className="col-span-2">
+                <ObjectLinkInput value={objectLink} onChange={setObjectLink} />
               </div>
               <div className="col-span-2">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Observações Gerais</label>

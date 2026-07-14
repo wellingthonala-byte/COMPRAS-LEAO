@@ -31,6 +31,7 @@ export interface PurchaseRequest {
   fiscalNote?: string;
   items: Item[];
   observations?: string;
+  objectLink?: string;
   history: HistoryEntry[];
   approvedBy?: string;
   approvalId?: string;

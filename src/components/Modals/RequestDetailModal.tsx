@@ -1,5 +1,6 @@
 import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw, Printer } from 'lucide-react';
 import { printPurchaseRequest } from '../../utils/printDocument';
+import { ObjectLinkView } from '../UI/ObjectLink';
 import { useState } from 'react';
 import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
@@ -271,6 +272,21 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   <div className="flex items-center gap-1 mt-0.5">
                     <Calendar size={11} className="text-slate-400" />
                     <p className="text-sm text-slate-700">{formatDate(request.createdAt)}</p>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Link do Objeto</p>
+                  <div className="mt-0.5 text-sm">
+                    <ObjectLinkView
+                      url={request.objectLink}
+                      onSave={(url) => onEdit(request.id, {
+                        objectLink: url,
+                        history: [...request.history, {
+                          id: `h-${Date.now()}`, date: new Date().toISOString(), user: currentUser.name,
+                          action: url ? `Link do objeto ${request.objectLink ? 'alterado' : 'adicionado'}: ${url}` : 'Link do objeto removido',
+                        }],
+                      })}
+                    />
                   </div>
                 </div>
               </div>
