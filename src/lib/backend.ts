@@ -118,18 +118,34 @@ function rowToRequest(row: DBRequestRow, profileNames: Map<string, string>): Pur
   };
 }
 
+const PAGE_SIZE = 1000;
+
+/** Busca todas as páginas de uma consulta (o Supabase limita a 1000 por vez) */
+async function fetchAllPages<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await query(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    all.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
+  return all;
+}
+
 export async function fetchRequests(): Promise<PurchaseRequest[] | null> {
   try {
     const sb = getSupabase();
-    const [{ data: rows, error }, { data: profiles }] = await Promise.all([
-      sb.from('purchase_requests')
-        .select('*, request_items(*), suppliers(*), status_history(*)')
-        .order('created_at', { ascending: false }),
-      sb.from('profiles').select('id, full_name'),
+    const [rows, profiles] = await Promise.all([
+      fetchAllPages<DBRequestRow>((from, to) =>
+        sb.from('purchase_requests')
+          .select('*, request_items(*), suppliers(*), status_history(*)')
+          .order('created_at', { ascending: false })
+          .range(from, to)),
+      fetchAllPages<{ id: string; full_name: string }>((from, to) =>
+        sb.from('profiles').select('id, full_name').range(from, to)),
     ]);
-    if (error) throw error;
-    const names = new Map<string, string>((profiles ?? []).map((p: { id: string; full_name: string }) => [p.id, p.full_name]));
-    return (rows as unknown as DBRequestRow[]).map((r) => rowToRequest(r, names));
+    const names = new Map<string, string>(profiles.map((p) => [p.id, p.full_name]));
+    return rows.map((r) => rowToRequest(r, names));
   } catch (e) {
     console.warn('[backend] fetchRequests falhou — usando dados locais:', e);
     return null;
@@ -148,9 +164,10 @@ export async function upsertRequests(reqs: PurchaseRequest[], requesterId?: stri
     const uid = requesterId ?? (await sb.auth.getUser()).data.user?.id;
     if (!uid) return;
     // request_number: preserva o dos registros existentes; novos recebem max+1
-    const { data: existing } = await sb.from('purchase_requests').select('id, request_number');
-    const byId = new Map((existing ?? []).map((r: { id: string; request_number: number }) => [r.id, r.request_number]));
-    let maxNum = Math.max(0, ...(existing ?? []).map((r: { request_number: number }) => r.request_number));
+    const existing = await fetchAllPages<{ id: string; request_number: number }>((from, to) =>
+      sb.from('purchase_requests').select('id, request_number').range(from, to));
+    const byId = new Map(existing.map((r) => [r.id, r.request_number]));
+    let maxNum = Math.max(0, ...existing.map((r) => r.request_number));
     const payload = requests.map((r) => {
       let num = byId.get(r.id);
       if (num === undefined) { maxNum += 1; num = maxNum; }
@@ -227,13 +244,14 @@ function rowToOrder(row: DBOsRow, profileNames: Map<string, string>): ServiceOrd
 export async function fetchServiceOrders(): Promise<ServiceOrder[] | null> {
   try {
     const sb = getSupabase();
-    const [{ data: rows, error }, { data: profiles }] = await Promise.all([
-      sb.from('service_orders').select('*').order('created_at', { ascending: false }),
-      sb.from('profiles').select('id, full_name'),
+    const [rows, profiles] = await Promise.all([
+      fetchAllPages<DBOsRow>((from, to) =>
+        sb.from('service_orders').select('*').order('created_at', { ascending: false }).range(from, to)),
+      fetchAllPages<{ id: string; full_name: string }>((from, to) =>
+        sb.from('profiles').select('id, full_name').range(from, to)),
     ]);
-    if (error) throw error;
-    const names = new Map<string, string>((profiles ?? []).map((p: { id: string; full_name: string }) => [p.id, p.full_name]));
-    return (rows as unknown as DBOsRow[]).map((r) => rowToOrder(r, names));
+    const names = new Map<string, string>(profiles.map((p) => [p.id, p.full_name]));
+    return rows.map((r) => rowToOrder(r, names));
   } catch (e) {
     console.warn('[backend] fetchServiceOrders falhou — usando dados locais:', e);
     return null;
@@ -247,9 +265,10 @@ export async function upsertServiceOrders(allOrders: ServiceOrder[]): Promise<vo
     const sb = getSupabase();
     const uid = (await sb.auth.getUser()).data.user?.id;
     if (!uid) return;
-    const { data: existing } = await sb.from('service_orders').select('id, order_number');
-    const byId = new Map((existing ?? []).map((r: { id: string; order_number: number }) => [r.id, r.order_number]));
-    let maxNum = Math.max(0, ...(existing ?? []).map((r: { order_number: number }) => r.order_number));
+    const existing = await fetchAllPages<{ id: string; order_number: number }>((from, to) =>
+      sb.from('service_orders').select('id, order_number').range(from, to));
+    const byId = new Map(existing.map((r) => [r.id, r.order_number]));
+    let maxNum = Math.max(0, ...existing.map((r) => r.order_number));
     const payload = orders.map((o) => {
       let num = byId.get(o.id);
       if (num === undefined) { maxNum += 1; num = maxNum; }
@@ -331,11 +350,18 @@ async function rest(base: string, key: string, path: string, init?: RequestInit)
 }
 
 async function readAll(base: string, key: string, table: string, log: LogFn): Promise<Record<string, unknown>[]> {
-  const res = await rest(base, key, `/rest/v1/${table}?select=*&limit=10000`);
-  if (!res.ok) throw new Error(`Falha ao ler ${table}: HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
-  const rows = await res.json();
-  log(`Lidos ${rows.length} registro(s) de ${table}`);
-  return rows;
+  // O Supabase limita cada consulta a 1000 linhas — pagina até o fim
+  const PAGE = 1000;
+  const all: Record<string, unknown>[] = [];
+  for (let offset = 0; ; offset += PAGE) {
+    const res = await rest(base, key, `/rest/v1/${table}?select=*&order=created_at.asc&limit=${PAGE}&offset=${offset}`);
+    if (!res.ok) throw new Error(`Falha ao ler ${table}: HTTP ${res.status} — ${(await res.text()).slice(0, 200)}`);
+    const rows: Record<string, unknown>[] = await res.json();
+    all.push(...rows);
+    if (rows.length < PAGE) break;
+  }
+  log(`Lidos ${all.length} registro(s) de ${table}`);
+  return all;
 }
 
 async function insertAll(base: string, key: string, table: string, rows: Record<string, unknown>[], log: LogFn): Promise<void> {
