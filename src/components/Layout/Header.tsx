@@ -2,7 +2,7 @@ import { Plus, Bell, Search, X, ShieldCheck, Clock, ArrowRight, Send } from 'luc
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PurchaseRequest } from '../../types';
-import { sendTestNotification, NTFY_TOPIC } from '../../utils/notify';
+import { sendTestNotification, getNtfyTopic } from '../../utils/notify';
 
 interface HeaderProps {
   title: string;
@@ -139,7 +139,7 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
       <div className="flex items-center gap-2">
         <button
           onClick={handleTestNotification}
-          title={`Testar notificação ntfy (tópico: ${NTFY_TOPIC})`}
+          title={`Testar notificação ntfy (tópico: ${getNtfyTopic()})`}
           className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition-colors"
         >
           <Send size={13} />

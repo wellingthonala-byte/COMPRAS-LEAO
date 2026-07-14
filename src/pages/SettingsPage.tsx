@@ -159,7 +159,7 @@ function Toggle({ label, checked, onChange, hint }: { label: string; checked: bo
       <button
         type="button" role="switch" aria-checked={checked} aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`relative w-10 h-5.5 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-violet-600' : 'bg-slate-200'}`}
+        className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${checked ? 'bg-violet-600' : 'bg-slate-200'}`}
       >
         <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${checked ? 'left-[18px]' : 'left-0.5'}`} />
       </button>
@@ -556,21 +556,50 @@ function UsersSection({ users, persist, currentUser, showToast }: {
   const [isNew, setIsNew] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
   const [showPwd, setShowPwd] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const roleLabel: Record<Role, string> = { gestor: 'Gestor', comprador: 'Comprador', solicitante: 'Solicitante' };
 
   const startNew = () => {
     setIsNew(true);
+    setFormError('');
     setEditing({ id: `u-${Date.now()}`, name: '', email: '', password: '', role: 'solicitante', initials: '', active: true });
   };
 
   const save = () => {
-    if (!editing || !editing.name.trim() || !editing.password.trim()) return;
-    const initials = editing.name.trim().slice(0, 2).toUpperCase();
-    const final = { ...editing, name: editing.name.trim(), initials };
+    if (!editing) return;
+    const name = editing.name.trim();
+    if (!name || !editing.password.trim()) {
+      setFormError('Nome e senha são obrigatórios.');
+      return;
+    }
+    if (editing.password.trim().length < 4) {
+      setFormError('A senha deve ter pelo menos 4 caracteres.');
+      return;
+    }
+    const duplicate = users.some((u) => u.id !== editing.id && u.name.trim().toLowerCase() === name.toLowerCase());
+    if (duplicate) {
+      setFormError(`Já existe um usuário chamado "${name}" — o login é feito pelo nome, então ele precisa ser único.`);
+      return;
+    }
+    if (editing.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editing.email)) {
+      setFormError('E-mail inválido.');
+      return;
+    }
+    // Não permitir remover o último gestor ativo (trava de segurança do fluxo de aprovação)
+    if (!isNew) {
+      const original = users.find((u) => u.id === editing.id);
+      const otherActiveGestor = users.some((u) => u.id !== editing.id && u.role === 'gestor' && u.active !== false);
+      if (original?.role === 'gestor' && (editing.role !== 'gestor' || editing.active === false) && !otherActiveGestor) {
+        setFormError('Este é o único gestor ativo — cadastre outro gestor antes de alterar o cargo ou desativá-lo.');
+        return;
+      }
+    }
+    const initials = name.slice(0, 2).toUpperCase();
+    const final = { ...editing, name, email: editing.email?.trim() || undefined, initials };
     persist(isNew ? [...users, final] : users.map((u) => (u.id === final.id ? final : u)));
     showToast(isNew ? 'Usuário criado com sucesso' : 'Usuário atualizado');
-    setEditing(null); setIsNew(false);
+    setEditing(null); setIsNew(false); setFormError('');
   };
 
   return (
@@ -617,11 +646,15 @@ function UsersSection({ users, persist, currentUser, showToast }: {
                   </td>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-1">
-                      <button onClick={() => { setIsNew(false); setEditing(u); }} title="Editar" aria-label={`Editar ${u.name}`}
+                      <button onClick={() => { setIsNew(false); setFormError(''); setEditing(u); }} title="Editar" aria-label={`Editar ${u.name}`}
                         className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Pencil size={13} /></button>
                       <button
                         onClick={() => {
                           if (u.id === currentUser.id) { showToast('Você não pode desativar a si mesmo'); return; }
+                          if (u.role === 'gestor' && u.active !== false && !users.some((x) => x.id !== u.id && x.role === 'gestor' && x.active !== false)) {
+                            showToast('Não é possível desativar o único gestor ativo');
+                            return;
+                          }
                           persist(users.map((x) => x.id === u.id ? { ...x, active: x.active === false } : x));
                           showToast(u.active !== false ? 'Usuário desativado' : 'Usuário ativado');
                         }}
@@ -630,7 +663,14 @@ function UsersSection({ users, persist, currentUser, showToast }: {
                         {u.active !== false ? <CircleOff size={13} /> : <CheckCircle2 size={13} />}
                       </button>
                       <button
-                        onClick={() => { if (u.id === currentUser.id) { showToast('Você não pode excluir a si mesmo'); return; } setConfirmDelete(u); }}
+                        onClick={() => {
+                          if (u.id === currentUser.id) { showToast('Você não pode excluir a si mesmo'); return; }
+                          if (u.role === 'gestor' && u.active !== false && !users.some((x) => x.id !== u.id && x.role === 'gestor' && x.active !== false)) {
+                            showToast('Não é possível excluir o único gestor ativo');
+                            return;
+                          }
+                          setConfirmDelete(u);
+                        }}
                         title="Excluir" aria-label={`Excluir ${u.name}`}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={13} /></button>
                     </div>
@@ -682,6 +722,12 @@ function UsersSection({ users, persist, currentUser, showToast }: {
               </div>
               <Toggle label="Usuário ativo" checked={editing.active !== false} onChange={(v) => setEditing({ ...editing, active: v })} />
             </div>
+            {formError && (
+              <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                <AlertTriangle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-700">{formError}</p>
+              </div>
+            )}
             <div className="flex justify-end gap-2 mt-5">
               <button onClick={() => setEditing(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
               <button onClick={save} disabled={!editing.name.trim() || !editing.password.trim()}
