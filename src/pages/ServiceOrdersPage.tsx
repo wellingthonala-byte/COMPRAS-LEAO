@@ -110,12 +110,12 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
 
   useEffect(() => { const t = setTimeout(() => setLoading(false), 350); return () => clearTimeout(t); }, []);
 
-  // Busca do Supabase ao abrir a página (mantém cache local como fallback)
+  // Busca do Supabase ao abrir a página — fonte da verdade quando online
   useEffect(() => {
     let cancelled = false;
     fetchServiceOrders().then((remote) => {
-      if (cancelled || !remote) return;
-      if (remote.length > 0) setOrders(remote);
+      if (cancelled || remote === null) return;
+      setOrders(remote);
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

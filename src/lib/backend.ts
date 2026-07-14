@@ -120,6 +120,14 @@ function rowToRequest(row: DBRequestRow, profileNames: Map<string, string>): Pur
 
 const PAGE_SIZE = 1000;
 
+/** Corta consultas penduradas: se o servidor não responder em 15s, cai no modo offline */
+function withTimeout<T>(p: Promise<T>, ms = 15000): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
+
 /** Busca todas as páginas de uma consulta (o Supabase limita a 1000 por vez) */
 async function fetchAllPages<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: unknown }>): Promise<T[]> {
   const all: T[] = [];
@@ -135,7 +143,7 @@ async function fetchAllPages<T>(query: (from: number, to: number) => PromiseLike
 export async function fetchRequests(): Promise<PurchaseRequest[] | null> {
   try {
     const sb = getSupabase();
-    const [rows, profiles] = await Promise.all([
+    const [rows, profiles] = await withTimeout(Promise.all([
       fetchAllPages<DBRequestRow>((from, to) =>
         sb.from('purchase_requests')
           .select('*, request_items(*), suppliers(*), status_history(*)')
@@ -143,7 +151,7 @@ export async function fetchRequests(): Promise<PurchaseRequest[] | null> {
           .range(from, to)),
       fetchAllPages<{ id: string; full_name: string }>((from, to) =>
         sb.from('profiles').select('id, full_name').range(from, to)),
-    ]);
+    ]));
     const names = new Map<string, string>(profiles.map((p) => [p.id, p.full_name]));
     return rows.map((r) => rowToRequest(r, names));
   } catch (e) {
@@ -244,12 +252,12 @@ function rowToOrder(row: DBOsRow, profileNames: Map<string, string>): ServiceOrd
 export async function fetchServiceOrders(): Promise<ServiceOrder[] | null> {
   try {
     const sb = getSupabase();
-    const [rows, profiles] = await Promise.all([
+    const [rows, profiles] = await withTimeout(Promise.all([
       fetchAllPages<DBOsRow>((from, to) =>
         sb.from('service_orders').select('*').order('created_at', { ascending: false }).range(from, to)),
       fetchAllPages<{ id: string; full_name: string }>((from, to) =>
         sb.from('profiles').select('id, full_name').range(from, to)),
-    ]);
+    ]));
     const names = new Map<string, string>(profiles.map((p) => [p.id, p.full_name]));
     return rows.map((r) => rowToOrder(r, names));
   } catch (e) {

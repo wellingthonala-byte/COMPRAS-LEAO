@@ -1,4 +1,4 @@
-import { ReactNode, useMemo, useState } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Package, CheckCircle2, AlertTriangle, Clock, Activity, DollarSign, TrendingUp,
@@ -12,6 +12,7 @@ import { colorFromInitials } from '../utils/colors';
 import { PurchaseRequest } from '../types';
 import { ServiceOrder, loadServiceOrders, osIsOverdue } from '../types/serviceOrders';
 import { Donut, LineChart, Bars, HBars, Sparkline, ChartEmpty } from '../components/UI/ChartKit';
+import { fetchServiceOrders } from '../lib/backend';
 
 interface DashboardPageProps { requests: PurchaseRequest[] }
 
@@ -132,7 +133,18 @@ export function DashboardPage({ requests }: DashboardPageProps) {
   const [fPriority, setFPriority] = useState('');
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2500); };
-  const refresh = () => { setOrders(loadServiceOrders()); showToast('Dados atualizados'); };
+  const refresh = () => {
+    setOrders(loadServiceOrders());
+    fetchServiceOrders().then((remote) => { if (remote !== null) setOrders(remote); });
+    showToast('Dados atualizados');
+  };
+
+  // O.S. reais do Supabase ao abrir o Dashboard
+  useEffect(() => {
+    let cancelled = false;
+    fetchServiceOrders().then((remote) => { if (!cancelled && remote !== null) setOrders(remote); });
+    return () => { cancelled = true; };
+  }, []);
 
   const sectors = useMemo(() => [...new Set(requests.map((r) => r.sector))].sort(), [requests]);
   const categories = useMemo(() => [...new Set(requests.flatMap((r) => r.items.map((i) => i.application)).filter(Boolean))].sort(), [requests]);

@@ -8,7 +8,6 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ServiceOrdersPage } from './pages/ServiceOrdersPage';
 import { LoginPage } from './pages/LoginPage';
-import { mockRequests } from './data/mockData';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
 import { fetchRequests, upsertRequests, logoutSupabase } from './lib/backend';
@@ -21,10 +20,10 @@ function loadRequests(): PurchaseRequest[] {
     const raw = localStorage.getItem(REQUESTS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed)) return parsed;
     }
-  } catch { /* dados corrompidos: recomeça do mock */ }
-  return mockRequests;
+  } catch { /* cache corrompido: começa vazio */ }
+  return [];
 }
 
 function loadUser(): AppUser | null {
@@ -39,6 +38,7 @@ function loadUser(): AppUser | null {
 export default function App() {
   const [requests, setRequests] = useState<PurchaseRequest[]>(loadRequests);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(loadUser);
+  const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'online' | 'offline'>('idle');
   const prevRequests = useRef<PurchaseRequest[]>(requests);
   const remoteLoaded = useRef(false);
 
@@ -52,17 +52,22 @@ export default function App() {
     else localStorage.removeItem(USER_KEY);
   }, [currentUser]);
 
-  // Ao logar: busca as solicitações do Supabase (se disponível)
+  // Ao logar: busca as solicitações do Supabase — fonte da verdade.
+  // Se o servidor não responder (offline / login local), mantém o cache do navegador.
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
+    setSyncState('syncing');
     fetchRequests().then((remote) => {
-      if (cancelled || !remote) return;
-      remoteLoaded.current = true;
-      if (remote.length > 0) {
-        prevRequests.current = remote;
-        setRequests(remote);
+      if (cancelled) return;
+      if (remote === null) {
+        setSyncState('offline');
+        return;
       }
+      remoteLoaded.current = true;
+      prevRequests.current = remote;
+      setRequests(remote);
+      setSyncState('online');
     });
     return () => { cancelled = true; };
   }, [currentUser?.id]);
@@ -90,6 +95,16 @@ export default function App() {
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
+      {syncState === 'syncing' && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-violet-600 text-white text-xs px-4 py-1.5 rounded-b-xl shadow-lg">
+          Sincronizando com o servidor...
+        </div>
+      )}
+      {syncState === 'offline' && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-white text-xs px-4 py-1.5 rounded-b-xl shadow-lg">
+          Sem conexão com o servidor — exibindo dados locais. Entre com seu e-mail para sincronizar.
+        </div>
+      )}
       <Sidebar currentUser={currentUser} onLogout={handleLogout} />
       <Routes>
         <Route path="/" element={<KanbanPage requests={requests} setRequests={setRequests} currentUser={currentUser} />} />
