@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ShoppingCart, Eye, EyeOff } from 'lucide-react';
 import { AppUser, authenticate } from '../data/users';
+import { loginWithSupabase } from '../lib/backend';
 
 interface LoginPageProps {
   onLogin: (user: AppUser) => void;
@@ -13,19 +14,35 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    const input = name.trim();
+
+    // E-mail → autentica no Supabase (usuários reais migrados)
+    if (input.includes('@')) {
+      try {
+        const user = await loginWithSupabase(input, password);
+        if (user) { onLogin(user); return; }
+        setError('E-mail ou senha incorretos.');
+      } catch {
+        setError('Não foi possível conectar ao servidor. Verifique sua internet.');
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Nome de usuário → autenticação local (usuários de teste)
     setTimeout(() => {
-      const user = authenticate(name.trim(), password);
+      const user = authenticate(input, password);
       if (user) {
         onLogin(user);
       } else {
         setError('Usuário ou senha incorretos.');
         setLoading(false);
       }
-    }, 600);
+    }, 400);
   };
 
   return (
@@ -42,13 +59,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1.5">Usuário</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1.5">Usuário ou e-mail</label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={(e) => { setName(e.target.value); setError(''); }}
-                placeholder="Seu nome de usuário"
+                placeholder="E-mail (conta migrada) ou nome de usuário"
                 className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
               />
             </div>

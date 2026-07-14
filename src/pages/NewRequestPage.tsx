@@ -59,7 +59,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
     const initials = getInitials(requester);
     const number = generateRequestNumber(now, requests.map((r) => r.number));
     const newRequest: PurchaseRequest = {
-      id: `req-${Date.now()}`,
+      id: crypto.randomUUID(),
       number,
       requester,
       requesterInitials: initials,

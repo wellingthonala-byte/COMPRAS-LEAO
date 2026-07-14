@@ -1272,6 +1272,74 @@ function ApiSection({ settings, setSettings, showToast }: {
   );
 }
 
+function MigrationTool() {
+  const [oldUrl, setOldUrl] = useState('');
+  const [oldSecret, setOldSecret] = useState('');
+  const [newSecret, setNewSecret] = useState('');
+  const [running, setRunning] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [log, setLog] = useState<string[]>([]);
+
+  const start = async () => {
+    setConfirming(false);
+    setRunning(true);
+    setLog(['Iniciando migração...']);
+    const addLog = (m: string) => setLog((prev) => [...prev, m]);
+    try {
+      const { runMigration } = await import('../lib/backend');
+      const { SUPABASE_URL } = await import('../lib/supabase');
+      await runMigration(oldUrl.trim(), oldSecret.trim(), SUPABASE_URL, newSecret.trim(), addLog);
+    } catch (e) {
+      addLog(`❌ Erro: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    setRunning(false);
+  };
+
+  const input = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono';
+  const valid = /^https:\/\/.+supabase\.co/.test(oldUrl.trim()) && oldSecret.trim().length > 20 && newSecret.trim().length > 20;
+
+  return (
+    <Card title="Migração de Dados (SaaS antigo → este sistema)" subtitle="Copia usuários, solicitações, itens, fornecedores, históricos e O.S. O banco antigo NÃO é modificado (somente leitura).">
+      <div className="space-y-3">
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Project URL do projeto ANTIGO</label>
+          <input value={oldUrl} onChange={(e) => setOldUrl(e.target.value)} placeholder="https://xxxxx.supabase.co" className={input} disabled={running} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Secret key do projeto ANTIGO (só leitura na cópia)</label>
+          <input type="password" value={oldSecret} onChange={(e) => setOldSecret(e.target.value)} placeholder="sb_secret_... ou service_role (eyJ...)" className={input} disabled={running} />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-600 mb-1">Secret key do projeto NOVO (destino)</label>
+          <input type="password" value={newSecret} onChange={(e) => setNewSecret(e.target.value)} placeholder="sb_secret_..." className={input} disabled={running} />
+        </div>
+        <PendingBanner text="Antes de migrar, execute o arquivo supabase/clone-schema.sql no SQL Editor do projeto NOVO (cria as tabelas). As chaves são usadas somente aqui no seu navegador e não ficam salvas." />
+        {!confirming ? (
+          <button onClick={() => setConfirming(true)} disabled={!valid || running}
+            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium">
+            <Database size={14} /> {running ? 'Migrando...' : 'Iniciar Migração'}
+          </button>
+        ) : (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <p className="text-xs text-amber-800 mb-2"><strong>Confirmar migração?</strong> Os dados serão copiados para o projeto novo. O projeto antigo não será alterado. Usuários serão criados com a senha temporária <strong>Leao@2026</strong>.</p>
+            <div className="flex gap-2">
+              <button onClick={start} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-1.5 rounded-lg text-xs font-medium">Sim, migrar agora</button>
+              <button onClick={() => setConfirming(false)} className="text-xs text-slate-500 px-3 py-1.5">Cancelar</button>
+            </div>
+          </div>
+        )}
+        {log.length > 0 && (
+          <div className="bg-slate-900 rounded-xl p-3 max-h-64 overflow-y-auto">
+            {log.map((l, i) => (
+              <p key={i} className={`text-[11px] font-mono leading-relaxed ${l.startsWith('❌') ? 'text-red-400' : l.startsWith('✅') ? 'text-emerald-400' : 'text-slate-300'}`}>{l}</p>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function DatabaseSection({ requests, users, settings }: { requests: PurchaseRequest[]; users: AppUser[]; settings: AppSettings }) {
   const purchases = requests.filter((r) => r.supplier || r.value);
   const totalValue = requests.reduce((s, r) => s + (r.value ?? 0), 0);
@@ -1297,7 +1365,8 @@ function DatabaseSection({ requests, users, settings }: { requests: PurchaseRequ
   ];
   return (
     <div className="space-y-4">
-      <Card title="Informações do Banco de Dados" subtitle="Hoje os dados vivem no navegador (localStorage); estas métricas migram para o banco real na integração">
+      <MigrationTool />
+      <Card title="Informações do Banco de Dados" subtitle="Dados sincronizados com o Supabase, com cache local no navegador como fallback offline">
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
           {stats.map((s) => (
             <div key={s.label} className="border border-slate-100 rounded-xl p-3">

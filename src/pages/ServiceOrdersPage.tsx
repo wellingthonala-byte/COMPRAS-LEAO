@@ -13,6 +13,7 @@ import { colorFromInitials } from '../utils/colors';
 import { sendNotification } from '../utils/notify';
 import { generateRequestNumber } from '../utils/numbering';
 import { printServiceOrder } from '../utils/printDocument';
+import { fetchServiceOrders, upsertServiceOrders } from '../lib/backend';
 import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
 import {
@@ -108,7 +109,23 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   const [fOverdue, setFOverdue] = useState(false);
 
   useEffect(() => { const t = setTimeout(() => setLoading(false), 350); return () => clearTimeout(t); }, []);
-  useEffect(() => { saveServiceOrders(orders); }, [orders]);
+
+  // Busca do Supabase ao abrir a página (mantém cache local como fallback)
+  useEffect(() => {
+    let cancelled = false;
+    fetchServiceOrders().then((remote) => {
+      if (cancelled || !remote) return;
+      if (remote.length > 0) setOrders(remote);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    saveServiceOrders(orders);
+    const t = setTimeout(() => { upsertServiceOrders(orders); }, 800);
+    return () => clearTimeout(t);
+  }, [orders]);
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3000); };
 
@@ -238,7 +255,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
     const number = generateRequestNumber(now, requests.map((r) => r.number));
     const prio = os.priority === 'Crítica' ? 'Máquina Parada' : os.priority === 'Alta' ? 'Urgente' : 'Não Urgente';
     const req: PurchaseRequest = {
-      id: `req-${Date.now()}`, number,
+      id: crypto.randomUUID(), number,
       requester: currentUser.name, requesterInitials: currentUser.initials,
       sector: 'Manutenção', priority: prio, status: 'Nova Solicitação',
       createdAt: now, deliveryForecast: os.dueDate || now.slice(0, 10),
@@ -726,7 +743,7 @@ function NewOSModal({ currentUser, existingNumbers, base, onClose, onCreate }: {
     if (!valid) return;
     const now = new Date().toISOString();
     onCreate({
-      id: `os-${Date.now()}`,
+      id: crypto.randomUUID(),
       number: generateOSNumber(now, existingNumbers),
       title: f.title.trim(), description: f.description.trim(),
       type: f.type, category: f.category, customer: f.customer.trim() || undefined,

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Sidebar } from './components/Layout/Sidebar';
 import { KanbanPage } from './pages/KanbanPage';
@@ -11,6 +11,7 @@ import { LoginPage } from './pages/LoginPage';
 import { mockRequests } from './data/mockData';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
+import { fetchRequests, upsertRequests, logoutSupabase } from './lib/backend';
 
 const REQUESTS_KEY = 'compras-leao-requests';
 const USER_KEY = 'compras-leao-user';
@@ -38,7 +39,10 @@ function loadUser(): AppUser | null {
 export default function App() {
   const [requests, setRequests] = useState<PurchaseRequest[]>(loadRequests);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(loadUser);
+  const prevRequests = useRef<PurchaseRequest[]>(requests);
+  const remoteLoaded = useRef(false);
 
+  // Cache local sempre atualizado (fallback offline)
   useEffect(() => {
     localStorage.setItem(REQUESTS_KEY, JSON.stringify(requests));
   }, [requests]);
@@ -48,13 +52,45 @@ export default function App() {
     else localStorage.removeItem(USER_KEY);
   }, [currentUser]);
 
+  // Ao logar: busca as solicitações do Supabase (se disponível)
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+    fetchRequests().then((remote) => {
+      if (cancelled || !remote) return;
+      remoteLoaded.current = true;
+      if (remote.length > 0) {
+        prevRequests.current = remote;
+        setRequests(remote);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  // Sincroniza com o Supabase apenas as solicitações que mudaram (debounce)
+  useEffect(() => {
+    if (!currentUser || !remoteLoaded.current) { prevRequests.current = requests; return; }
+    const prev = prevRequests.current;
+    const prevById = new Map(prev.map((r) => [r.id, r]));
+    const changed = requests.filter((r) => prevById.get(r.id) !== r);
+    prevRequests.current = requests;
+    if (changed.length === 0) return;
+    const t = setTimeout(() => { upsertRequests(changed, currentUser.id); }, 800);
+    return () => clearTimeout(t);
+  }, [requests, currentUser]);
+
+  const handleLogout = () => {
+    logoutSupabase();
+    setCurrentUser(null);
+  };
+
   if (!currentUser) {
     return <LoginPage onLogin={setCurrentUser} />;
   }
 
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
-      <Sidebar currentUser={currentUser} onLogout={() => setCurrentUser(null)} />
+      <Sidebar currentUser={currentUser} onLogout={handleLogout} />
       <Routes>
         <Route path="/" element={<KanbanPage requests={requests} setRequests={setRequests} currentUser={currentUser} />} />
         <Route path="/dashboard" element={<DashboardPage requests={requests} />} />

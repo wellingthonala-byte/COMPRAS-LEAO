@@ -76,7 +76,8 @@ create table if not exists public.purchase_requests (
   closing_user_id uuid references auth.users(id),
   closing_notes text,
   created_at timestamptz default now(),
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  extra jsonb
 );
 
 create table if not exists public.request_items (
@@ -141,7 +142,8 @@ create table if not exists public.service_orders (
   closing_date timestamptz,
   closing_user_id uuid,
   closing_notes text,
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  extra jsonb
 );
 
 create table if not exists public.service_order_history (
