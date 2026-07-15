@@ -1,0 +1,13 @@
+# Configuração de deploy no Netlify.
+# O runtime oficial do Next.js (detectado automaticamente) habilita SSR,
+# middleware de autenticação e otimização de imagens.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
