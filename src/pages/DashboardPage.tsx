@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { colorFromInitials } from '../utils/colors';
+import { exportCSV } from '../utils/export';
 import { PurchaseRequest } from '../types';
 import { ServiceOrder, loadServiceOrders, osIsOverdue } from '../types/serviceOrders';
 import { Donut, LineChart, Bars, HBars, Sparkline, ChartEmpty } from '../components/UI/ChartKit';
@@ -29,16 +30,6 @@ const OS_STATUS_COLORS: Record<string, string> = {
   'Em Execução': '#0284c7', 'Pausada': '#f97316', 'Finalizada': '#059669',
   'Faturada': '#0d9488', 'Cancelada': '#dc2626',
 };
-
-function exportCSV(headers: string[], rows: (string | number)[][], name: string) {
-  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-  const csv = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))].join('\n');
-  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = `${name}.csv`; a.click();
-  URL.revokeObjectURL(url);
-}
 
 /* ================================================================== */
 /* Card inteligente com menu de opções                                 */
