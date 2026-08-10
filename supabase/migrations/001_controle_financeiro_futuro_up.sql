@@ -39,8 +39,14 @@ exception when duplicate_object then null; end $$;
 
 -- ---------------------------------------------------------------------
 -- 3. Função auxiliar de papel (usada pelas políticas de RLS)
+--
+--    A comparação é feita em TEXTO, de propósito. O Postgres recusa usar
+--    um valor de enum recém-adicionado na mesma transação em que ele foi
+--    criado ("unsafe use of new value"), e 'financeiro' é adicionado logo
+--    acima. Comparar role::text mantém a migration aplicável de uma vez
+--    só, sem exigir execução em duas etapas.
 -- ---------------------------------------------------------------------
-create or replace function public.has_role(_role public.app_role)
+create or replace function public.has_any_role(_roles text[])
 returns boolean
 language sql
 stable
@@ -49,7 +55,7 @@ set search_path = public
 as $$
   select exists (
     select 1 from public.user_roles
-    where user_id = auth.uid() and role = _role
+    where user_id = auth.uid() and role::text = any(_roles)
   );
 $$;
 
@@ -160,5 +166,5 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   create policy "finance delete purchase_installments" on public.purchase_installments
     for delete to authenticated
-    using (public.has_role('admin') or public.has_role('financeiro'));
+    using (public.has_any_role(array['admin', 'financeiro']));
 exception when duplicate_object then null; end $$;

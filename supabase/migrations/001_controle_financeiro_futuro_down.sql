@@ -22,10 +22,10 @@ drop table if exists public.purchase_installments;
 
 drop type if exists public.installment_status;
 
--- set_updated_at e has_role são genéricas. Só remova se nenhuma outra
+-- set_updated_at e has_any_role são genéricas. Só remova se nenhuma outra
 -- migration passou a depender delas:
 -- drop function if exists public.set_updated_at();
--- drop function if exists public.has_role(public.app_role);
+-- drop function if exists public.has_any_role(text[]);
 
 -- O valor 'financeiro' permanece no enum public.app_role: o Postgres não
 -- permite remover valor de enum. Isso é inofensivo — para reverter de
