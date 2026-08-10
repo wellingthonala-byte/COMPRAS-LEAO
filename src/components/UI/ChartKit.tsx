@@ -129,6 +129,89 @@ export function Bars({ data, color = '#7c3aed', format }: {
   );
 }
 
+/**
+ * Barras empilhadas por segmento. Usada na projeção financeira para separar
+ * visualmente PREVISTO de CONFIRMADO no mesmo mês, e aceita clique na coluna
+ * para o drill-down.
+ */
+export function StackedBars({ data, segments, format, onSelect, selected }: {
+  data: { label: string; values: number[]; total: number }[];
+  segments: { key: string; label: string; color: string }[];
+  format?: (v: number) => string;
+  onSelect?: (index: number) => void;
+  selected?: number | null;
+}) {
+  const [hover, setHover] = useState<number | null>(null);
+  if (data.length === 0) return <ChartEmpty />;
+  const fmt = (v: number) => (format ? format(v) : String(v));
+  const w = 560, h = 170, padY = 22;
+  const max = Math.max(...data.map((d) => d.total), 1);
+  const slot = w / data.length;
+  const bw = Math.min(slot * 0.6, 30);
+
+  return (
+    <div>
+      <svg width="100%" viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Projeção mensal por status">
+        {data.map((d, i) => {
+          const x = i * slot + (slot - bw) / 2;
+          const dim = (hover !== null && hover !== i) || (selected != null && selected !== i);
+          let cursorY = h - 8;
+          return (
+            <g
+              key={d.label}
+              onMouseEnter={() => setHover(i)}
+              onMouseLeave={() => setHover(null)}
+              onClick={onSelect ? () => onSelect(i) : undefined}
+              className={onSelect ? 'cursor-pointer' : undefined}
+            >
+              <rect x={i * slot} y={0} width={slot} height={h} fill={selected === i ? '#f1f5f9' : 'transparent'} rx={6} />
+              {d.values.map((v, s) => {
+                if (v <= 0) return null;
+                const bh = Math.max((v / max) * (h - padY * 2), 2);
+                cursorY -= bh;
+                return (
+                  <rect
+                    key={segments[s].key} x={x} y={cursorY} width={bw} height={bh}
+                    fill={segments[s].color} opacity={dim ? 0.4 : 1}
+                    className="transition-opacity"
+                  />
+                );
+              })}
+              {hover === i && d.total > 0 && (
+                <text x={x + bw / 2} y={cursorY - 6} textAnchor="middle" fontSize="10" fontWeight="700" fill="#1e293b">
+                  {fmt(d.total)}
+                </text>
+              )}
+              <title>
+                {`${d.label} — total ${fmt(d.total)}\n`
+                  + segments.map((s, si) => `${s.label}: ${fmt(d.values[si] ?? 0)}`).join('\n')}
+              </title>
+            </g>
+          );
+        })}
+      </svg>
+      <div className="grid mt-1" style={{ gridTemplateColumns: `repeat(${data.length}, 1fr)` }}>
+        {data.map((d, i) => (
+          <span
+            key={d.label}
+            className={`text-[9px] text-center truncate ${hover === i || selected === i ? 'text-slate-700 font-semibold' : 'text-slate-400'}`}
+          >
+            {d.label}
+          </span>
+        ))}
+      </div>
+      <div className="flex items-center justify-center gap-4 mt-2">
+        {segments.map((s) => (
+          <span key={s.key} className="flex items-center gap-1.5 text-[10px] text-slate-500">
+            <span className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: s.color }} />
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function HBars({ data, format }: {
   data: { label: string; value: number; color?: string }[]; format?: (v: number) => string;
 }) {

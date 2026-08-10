@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Filter, X } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
@@ -21,12 +22,23 @@ interface KanbanPageProps {
 }
 
 export function KanbanPage({ requests, setRequests, currentUser }: KanbanPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | ''>('');
   const [filterSector, setFilterSector] = useState<Sector | ''>('');
 
   const selectedRequest = requests.find((r) => r.id === selectedId);
+
+  // Abertura direta de um card por ?pedido=<id> — é como o painel financeiro
+  // linka de volta para a solicitação. O parâmetro é consumido e removido da
+  // URL para não reabrir o modal ao fechá-lo.
+  useEffect(() => {
+    const id = searchParams.get('pedido');
+    if (!id) return;
+    if (requests.some((r) => r.id === id)) setSelectedId(id);
+    setSearchParams({}, { replace: true });
+  }, [searchParams, requests, setSearchParams]);
 
   // Alerta automático de entregas atrasadas (uma notificação por solicitação por dia)
   useEffect(() => {

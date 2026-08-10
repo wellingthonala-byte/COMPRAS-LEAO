@@ -11,11 +11,15 @@ import { Header } from '../components/Layout/Header';
 import { colorFromInitials } from '../utils/colors';
 import { exportCSV } from '../utils/export';
 import { PurchaseRequest } from '../types';
+import { AppUser, canViewFinance } from '../data/users';
+import { useInstallments } from '../lib/financeStore';
+import { getFinanceSettings } from '../lib/financeSettings';
+import { commitmentSummary, joinInstallments, limboRequests } from '../lib/financeQueries';
 import { ServiceOrder, loadServiceOrders, osIsOverdue } from '../types/serviceOrders';
 import { Donut, LineChart, Bars, HBars, Sparkline, ChartEmpty } from '../components/UI/ChartKit';
 import { fetchServiceOrders } from '../lib/backend';
 
-interface DashboardPageProps { requests: PurchaseRequest[] }
+interface DashboardPageProps { requests: PurchaseRequest[]; currentUser: AppUser }
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const isActive = (r: PurchaseRequest) => r.status !== 'Finalizado' && r.status !== 'Cancelada';
@@ -108,8 +112,9 @@ function SmartCard({ title, subtitle, children, onExport, detailsTo, onNavigate,
 /* ================================================================== */
 /* Página                                                              */
 /* ================================================================== */
-export function DashboardPage({ requests }: DashboardPageProps) {
+export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
   const navigate = useNavigate();
+  const installments = useInstallments();
   const [orders, setOrders] = useState<ServiceOrder[]>(loadServiceOrders);
   const [toast, setToast] = useState<string | null>(null);
   const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
@@ -136,6 +141,16 @@ export function DashboardPage({ requests }: DashboardPageProps) {
     fetchServiceOrders().then((remote) => { if (!cancelled && remote !== null) setOrders(remote); });
     return () => { cancelled = true; };
   }, []);
+
+  // Comprometido do mês corrente e dos 2 seguintes, mais o limbo
+  const commitment = useMemo(
+    () => commitmentSummary(joinInstallments(installments, requests), new Date().toISOString(), 3),
+    [installments, requests]
+  );
+  const financeLimbo = useMemo(
+    () => limboRequests(requests, getFinanceSettings().limboDays, new Date().toISOString()),
+    [requests]
+  );
 
   const sectors = useMemo(() => [...new Set(requests.map((r) => r.sector))].sort(), [requests]);
   const categories = useMemo(() => [...new Set(requests.flatMap((r) => r.items.map((i) => i.application)).filter(Boolean))].sort(), [requests]);
@@ -497,6 +512,59 @@ export function DashboardPage({ requests }: DashboardPageProps) {
             </div>
           </div>
         </div>
+
+        {/* Compromisso financeiro — visível a gestor e financeiro */}
+        {canViewFinance(currentUser.role) && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-violet-50 rounded-lg flex items-center justify-center">
+                  <PiggyBank size={15} className="text-violet-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-slate-700 text-sm">Comprometido</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Parcelas geradas na aprovação de valor, antes da compra acontecer
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => navigate('/financeiro')}
+                className="text-[11px] text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1"
+              >
+                Ver previsão completa <ArrowUpRight size={11} />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              {commitment.months.map((m, i) => (
+                <button
+                  key={m.monthKey}
+                  onClick={() => navigate('/financeiro')}
+                  className="border border-slate-100 rounded-xl p-3 text-left hover:border-violet-200 hover:shadow-sm transition-all"
+                >
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+                    {i === 0 ? 'Mês corrente' : m.label}
+                  </p>
+                  <p className="text-base font-bold text-slate-800 mt-0.5">{fmtBRL(m.total)}</p>
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    <span className="text-teal-600">{fmtBRL(m.confirmado)} confirmado</span>
+                    {' · '}
+                    <span className="text-violet-600">{fmtBRL(m.previsto)} previsto</span>
+                  </p>
+                </button>
+              ))}
+              <div className={`rounded-xl p-3 border ${financeLimbo.length > 0 ? 'bg-red-50 border-red-200' : 'border-slate-100'}`}>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide">No limbo</p>
+                <p className={`text-base font-bold mt-0.5 ${financeLimbo.length > 0 ? 'text-red-700' : 'text-slate-800'}`}>
+                  {financeLimbo.length}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Aprovados sem compra{financeLimbo.length > 0 && ` · ${fmtBRL(financeLimbo.reduce((s, l) => s + l.committedValue, 0))}`}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Linha principal: gráficos + painel lateral */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
