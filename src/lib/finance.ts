@@ -403,8 +403,9 @@ export function valueDivergence(approved: number | undefined, purchased: number 
 
 export function formatDivergenceNote(d: ValueDivergence): string {
   const fmt = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const pct = Math.abs(d.percent).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const dir = d.amount > 0 ? 'acima' : 'abaixo';
-  return `Valor comprado ${fmt(d.purchased)} ficou ${fmt(Math.abs(d.amount))} (${Math.abs(d.percent).toFixed(2)}%) ${dir} do valor aprovado ${fmt(d.approved)}.`;
+  return `Valor comprado ${fmt(d.purchased)} ficou ${fmt(Math.abs(d.amount))} (${pct}%) ${dir} do valor aprovado ${fmt(d.approved)}.`;
 }
 
 /* ------------------------------------------------------------------ */
