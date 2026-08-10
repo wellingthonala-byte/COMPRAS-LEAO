@@ -70,6 +70,8 @@ export function Sidebar({ currentUser, onLogout }: SidebarProps) {
                 </span>
               ) : currentUser.role === 'comprador' ? (
                 <span className="text-[10px] text-violet-600 font-medium">Comprador</span>
+              ) : currentUser.role === 'financeiro' ? (
+                <span className="text-[10px] text-teal-600 font-medium">Financeiro</span>
               ) : (
                 <span className="text-[10px] text-slate-400">Solicitante</span>
               )}

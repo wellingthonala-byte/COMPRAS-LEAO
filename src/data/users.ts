@@ -1,4 +1,16 @@
-export type Role = 'gestor' | 'solicitante' | 'comprador';
+/**
+ * 'financeiro' enxerga a projeção consolidada da empresa como o gestor, mas
+ * não aprova nem cota. O papel foi acrescentado ao enum app_role do banco na
+ * migration 001.
+ */
+export type Role = 'gestor' | 'solicitante' | 'comprador' | 'financeiro';
+
+/** Perfis que podem ver a projeção financeira consolidada da empresa. */
+export const FINANCE_VIEW_ROLES: Role[] = ['gestor', 'financeiro'];
+
+export function canViewFinance(role: Role): boolean {
+  return FINANCE_VIEW_ROLES.includes(role);
+}
 
 export interface AppUser {
   id: string;

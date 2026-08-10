@@ -558,7 +558,7 @@ function UsersSection({ users, persist, currentUser, showToast }: {
   const [showPwd, setShowPwd] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const roleLabel: Record<Role, string> = { gestor: 'Gestor', comprador: 'Comprador', solicitante: 'Solicitante' };
+  const roleLabel: Record<Role, string> = { gestor: 'Gestor', comprador: 'Comprador', financeiro: 'Financeiro', solicitante: 'Solicitante' };
 
   const startNew = () => {
     setIsNew(true);
@@ -632,7 +632,7 @@ function UsersSection({ users, persist, currentUser, showToast }: {
                   </td>
                   <td className="px-3 py-2.5">
                     <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                      u.role === 'gestor' ? 'bg-emerald-100 text-emerald-700' : u.role === 'comprador' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600'
+                      u.role === 'gestor' ? 'bg-emerald-100 text-emerald-700' : u.role === 'comprador' ? 'bg-violet-100 text-violet-700' : u.role === 'financeiro' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600'
                     }`}>{roleLabel[u.role]}</span>
                   </td>
                   <td className="px-3 py-2.5 text-xs text-slate-500">{u.email || '—'}</td>
@@ -715,8 +715,9 @@ function UsersSection({ users, persist, currentUser, showToast }: {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Cargo / Perfil</label>
                 <select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value as Role })}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
-                  <option value="gestor">Gestor — aprova solicitações</option>
+                  <option value="gestor">Gestor — aprova solicitações e valores</option>
                   <option value="comprador">Comprador — movimenta o fluxo e cancela</option>
+                  <option value="financeiro">Financeiro — vê a projeção de parcelas</option>
                   <option value="solicitante">Solicitante — cria solicitações</option>
                 </select>
               </div>
