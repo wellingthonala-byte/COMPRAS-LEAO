@@ -83,18 +83,29 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     ...(to ? { to } : {}),
   });
 
+  /**
+   * Aplica a mudança de forma funcional (para não sobrescrever alteração
+   * concorrente vinda do Supabase) e devolve o pedido resultante para o
+   * gancho financeiro. Uma eventual defasagem aqui é corrigida pela
+   * varredura de reconciliação ao abrir o Financeiro.
+   */
+  const applyChange = (id: string, change: (r: PurchaseRequest) => PurchaseRequest, snapshot: PurchaseRequest) => {
+    setRequests((prev) => prev.map((r) => (r.id !== id ? r : change(r))));
+    return change(snapshot);
+  };
+
   const handleAdvanceStatus = (id: string) => {
     const req = requests.find((r) => r.id === id);
     if (!req) return;
     const idx = STATUS_ORDER.indexOf(req.status);
     if (idx === -1 || idx >= STATUS_ORDER.length - 1) return;
     const nextStatus = STATUS_ORDER[idx + 1];
-    const updated: PurchaseRequest = {
-      ...req,
+    const advanced = entry('Status alterado', req.status, nextStatus);
+    const updated = applyChange(id, (r) => ({
+      ...r,
       status: nextStatus,
-      history: [...req.history, entry('Status alterado', req.status, nextStatus)],
-    };
-    setRequests((prev) => prev.map((r) => (r.id !== id ? r : updated)));
+      history: [...r.history, advanced],
+    }), req);
 
     // Entrada em "Comprado": as parcelas passam a Confirmado e a data-base é
     // recalculada pela nota fiscal. Não aguardamos: falha aqui não pode
@@ -112,15 +123,16 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   const handleCancel = (id: string, reason: string) => {
     const req = requests.find((r) => r.id === id);
     if (!req || req.status === 'Cancelada' || req.status === 'Finalizado') return;
-    const updated: PurchaseRequest = {
-      ...req,
+    const cancelledAt = new Date().toISOString();
+    const cancelEntry = entry(`Solicitação cancelada — Motivo: ${reason}`, req.status, 'Cancelada');
+    const updated = applyChange(id, (r) => ({
+      ...r,
       status: 'Cancelada' as Status,
       cancelledBy: currentUser.name,
-      cancelledAt: new Date().toISOString(),
+      cancelledAt,
       cancelReason: reason,
-      history: [...req.history, entry(`Solicitação cancelada — Motivo: ${reason}`, req.status, 'Cancelada')],
-    };
-    setRequests((prev) => prev.map((r) => (r.id !== id ? r : updated)));
+      history: [...r.history, cancelEntry],
+    }), req);
 
     // Parcelas em aberto viram Cancelado; as já pagas permanecem
     void syncRequestFinance(updated);
@@ -166,15 +178,14 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
       paymentTermsLabel: formatPaymentTerms(req.paymentTerms),
     };
     const valueLabel = (req.value as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    const updated: PurchaseRequest = {
-      ...req,
+    const approvalEntry = entry(
+      `Valor aprovado pelo gestor: ${valueLabel} em ${valueApproval.paymentTermsLabel} (ID: ${currentUser.id})`
+    );
+    const updated = applyChange(id, (r) => ({
+      ...r,
       valueApproval,
-      history: [
-        ...req.history,
-        entry(`Valor aprovado pelo gestor: ${valueLabel} em ${valueApproval.paymentTermsLabel} (ID: ${currentUser.id})`),
-      ],
-    };
-    setRequests((prev) => prev.map((r) => (r.id !== id ? r : updated)));
+      history: [...r.history, approvalEntry],
+    }), req);
 
     // Gera as parcelas previstas. Sem await de propósito: se a gravação
     // falhar, o erro vai para a fila e a aprovação conclui de todo modo.
