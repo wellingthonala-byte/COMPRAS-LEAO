@@ -4,8 +4,11 @@ import { Header } from '../components/Layout/Header';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { RequestDetailModal } from '../components/Modals/RequestDetailModal';
 import { STATUS_ORDER } from '../data/mockData';
-import { PurchaseRequest, Priority, Sector, Status } from '../types';
+import { PurchaseRequest, Priority, Sector, Status, HistoryEntry } from '../types';
+import { ValueApproval } from '../types/finance';
 import { sendNotification } from '../utils/notify';
+import { formatPaymentTerms } from '../lib/paymentTerms';
+import { canProjectInstallments, syncRequestFinance } from '../lib/financeSync';
 import { AppUser } from '../data/users';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
@@ -58,31 +61,34 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     });
   }, [requests, search, filterPriority, filterSector]);
 
+  /** Entrada no histórico com a assinatura padrão do projeto. */
+  const entry = (action: string, from?: Status, to?: Status): HistoryEntry => ({
+    id: `h-${Date.now()}`,
+    date: new Date().toISOString(),
+    user: currentUser.name,
+    action,
+    ...(from ? { from } : {}),
+    ...(to ? { to } : {}),
+  });
+
   const handleAdvanceStatus = (id: string) => {
     const req = requests.find((r) => r.id === id);
     if (!req) return;
     const idx = STATUS_ORDER.indexOf(req.status);
     if (idx === -1 || idx >= STATUS_ORDER.length - 1) return;
     const nextStatus = STATUS_ORDER[idx + 1];
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id !== id ? r : {
-          ...r,
-          status: nextStatus,
-          history: [
-            ...r.history,
-            {
-              id: `h-${Date.now()}`,
-              date: new Date().toISOString(),
-              user: currentUser.name,
-              action: 'Status alterado',
-              from: r.status,
-              to: nextStatus,
-            },
-          ],
-        }
-      )
-    );
+    const updated: PurchaseRequest = {
+      ...req,
+      status: nextStatus,
+      history: [...req.history, entry('Status alterado', req.status, nextStatus)],
+    };
+    setRequests((prev) => prev.map((r) => (r.id !== id ? r : updated)));
+
+    // Entrada em "Comprado": as parcelas passam a Confirmado e a data-base é
+    // recalculada pela nota fiscal. Não aguardamos: falha aqui não pode
+    // travar a movimentação do card.
+    void syncRequestFinance(updated);
+
     sendNotification({
       title: `📦 ${req.number} — ${nextStatus}`,
       message: `Solicitação de ${req.requester} (${req.sector}) avançou para "${nextStatus}".`,
@@ -94,28 +100,19 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   const handleCancel = (id: string, reason: string) => {
     const req = requests.find((r) => r.id === id);
     if (!req || req.status === 'Cancelada' || req.status === 'Finalizado') return;
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id !== id ? r : {
-          ...r,
-          status: 'Cancelada' as Status,
-          cancelledBy: currentUser.name,
-          cancelledAt: new Date().toISOString(),
-          cancelReason: reason,
-          history: [
-            ...r.history,
-            {
-              id: `h-${Date.now()}`,
-              date: new Date().toISOString(),
-              user: currentUser.name,
-              action: `Solicitação cancelada — Motivo: ${reason}`,
-              from: r.status,
-              to: 'Cancelada' as Status,
-            },
-          ],
-        }
-      )
-    );
+    const updated: PurchaseRequest = {
+      ...req,
+      status: 'Cancelada' as Status,
+      cancelledBy: currentUser.name,
+      cancelledAt: new Date().toISOString(),
+      cancelReason: reason,
+      history: [...req.history, entry(`Solicitação cancelada — Motivo: ${reason}`, req.status, 'Cancelada')],
+    };
+    setRequests((prev) => prev.map((r) => (r.id !== id ? r : updated)));
+
+    // Parcelas em aberto viram Cancelado; as já pagas permanecem
+    void syncRequestFinance(updated);
+
     sendNotification({
       title: `🚫 ${req.number} — Cancelada`,
       message: `${currentUser.name} cancelou a solicitação de ${req.requester}. Motivo: ${reason}`,
@@ -124,8 +121,59 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     });
   };
 
-  const handleEdit = (id: string, fields: Partial<import('../types').PurchaseRequest>) => {
-    setRequests((prev) => prev.map((r) => r.id !== id ? r : { ...r, ...fields }));
+  const handleEdit = (id: string, fields: Partial<PurchaseRequest>) => {
+    const before = requests.find((r) => r.id === id);
+    setRequests((prev) => prev.map((r) => (r.id !== id ? r : { ...r, ...fields })));
+    if (!before) return;
+
+    // Valor, condição de pagamento e data da NF alimentam a projeção: se algum
+    // deles mudou num pedido já aprovado, as parcelas são recalculadas. É o
+    // caminho normal quando a NF chega depois da entrada em "Comprado".
+    const financeFields: (keyof PurchaseRequest)[] = ['value', 'paymentTerms', 'fiscalNoteDate'];
+    const touched = financeFields.some((k) => k in fields);
+    if (touched && before.valueApproval) {
+      void syncRequestFinance({ ...before, ...fields });
+    }
+  };
+
+  /**
+   * Segunda aprovação: o gestor aprova o VALOR cotado. É aqui que nasce o
+   * compromisso financeiro — a aprovação de mérito acontece antes da cotação,
+   * quando ainda não existe valor nem condição de pagamento.
+   */
+  const handleApproveValue = (id: string) => {
+    const req = requests.find((r) => r.id === id);
+    if (!req || req.valueApproval || !canProjectInstallments(req)) return;
+
+    const now = new Date().toISOString();
+    const valueApproval: ValueApproval = {
+      approvedBy: currentUser.name,
+      approvalId: currentUser.id,
+      approvedAt: now,
+      approvedValue: req.value as number,
+      paymentTermsLabel: formatPaymentTerms(req.paymentTerms),
+    };
+    const valueLabel = (req.value as number).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const updated: PurchaseRequest = {
+      ...req,
+      valueApproval,
+      history: [
+        ...req.history,
+        entry(`Valor aprovado pelo gestor: ${valueLabel} em ${valueApproval.paymentTermsLabel} (ID: ${currentUser.id})`),
+      ],
+    };
+    setRequests((prev) => prev.map((r) => (r.id !== id ? r : updated)));
+
+    // Gera as parcelas previstas. Sem await de propósito: se a gravação
+    // falhar, o erro vai para a fila e a aprovação conclui de todo modo.
+    void syncRequestFinance(updated);
+
+    sendNotification({
+      title: `💰 ${req.number} — Valor aprovado`,
+      message: `${currentUser.name} aprovou ${valueLabel} em ${valueApproval.paymentTermsLabel}. ${req.paymentTerms?.days.length ?? 0} parcela(s) entraram na projeção financeira.`,
+      priority: 4,
+      tags: ['moneybag'],
+    });
   };
 
   const handleApprove = (id: string, approverName: string, approvalId: string) => {
@@ -220,6 +268,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
           currentUser={currentUser}
           onAdvanceStatus={(id) => { handleAdvanceStatus(id); setSelectedId(null); }}
           onApprove={(id, name, approvalId) => { handleApprove(id, name, approvalId); }}
+          onApproveValue={handleApproveValue}
           onEdit={handleEdit}
           onCancel={(id, reason) => { handleCancel(id, reason); setSelectedId(null); }}
         />

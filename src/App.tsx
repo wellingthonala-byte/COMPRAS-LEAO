@@ -11,6 +11,7 @@ import { LoginPage } from './pages/LoginPage';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
 import { fetchRequests, upsertRequests, logoutSupabase } from './lib/backend';
+import { initInstallments } from './lib/financeStore';
 
 const REQUESTS_KEY = 'compras-leao-requests';
 const USER_KEY = 'compras-leao-user';
@@ -58,6 +59,9 @@ export default function App() {
     if (!currentUser) return;
     let cancelled = false;
     setSyncState('syncing');
+    // As parcelas têm cache e fila próprios (lib/financeStore) e carregam em
+    // paralelo: uma falha aqui não deve impedir o Kanban de abrir.
+    void initInstallments();
     fetchRequests().then((remote) => {
       if (cancelled) return;
       if (remote === null) {
