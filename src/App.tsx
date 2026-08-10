@@ -121,7 +121,7 @@ export default function App() {
         <Route path="/dashboard" element={<DashboardPage requests={requests} currentUser={currentUser} />} />
         <Route path="/nova-solicitacao" element={<NewRequestPage requests={requests} currentUser={currentUser} onAdd={(r) => setRequests((prev) => [r, ...prev])} />} />
         <Route path="/ordens" element={<ServiceOrdersPage currentUser={currentUser} requests={requests} onCreatePurchaseRequest={(r) => setRequests((prev) => [r, ...prev])} />} />
-        <Route path="/financeiro" element={<FinancePage requests={requests} currentUser={currentUser} />} />
+        <Route path="/financeiro" element={<FinancePage requests={requests} setRequests={setRequests} currentUser={currentUser} />} />
         <Route path="/relatorios" element={<ReportsPage requests={requests} />} />
         <Route path="/configuracoes" element={<SettingsPage currentUser={currentUser} requests={requests} />} />
       </Routes>

@@ -12,6 +12,7 @@ import { AppUser, canViewFinance } from '../data/users';
 import { exportCSV, exportExcel, exportName } from '../utils/export';
 import { monthKeyOf } from '../lib/finance';
 import { getFinanceSettings } from '../lib/financeSettings';
+import { BackfillPanel } from '../components/Finance/BackfillPanel';
 import { clearFinanceLog, pendingCount, readFinanceLog, useInstallments } from '../lib/financeStore';
 import { reconcile } from '../lib/financeSync';
 import {
@@ -45,6 +46,7 @@ const MONTHS_AHEAD = 12;
 
 interface FinancePageProps {
   requests: PurchaseRequest[];
+  setRequests: React.Dispatch<React.SetStateAction<PurchaseRequest[]>>;
   currentUser: AppUser;
 }
 
@@ -63,7 +65,7 @@ function Kpi({ icon: Icon, label, value, note, tone }: {
   );
 }
 
-export function FinancePage({ requests, currentUser }: FinancePageProps) {
+export function FinancePage({ requests, setRequests, currentUser }: FinancePageProps) {
   const navigate = useNavigate();
   const installments = useInstallments();
   const [filters, setFilters] = useState<FinanceFilters>(EMPTY_FILTERS);
@@ -446,6 +448,17 @@ export function FinancePage({ requests, currentUser }: FinancePageProps) {
               </div>
             )}
           </div>
+
+          {/* Backfill dos pedidos anteriores ao módulo */}
+          <BackfillPanel
+            requests={requests}
+            onApply={(patched) => {
+              const byId = new Map(patched.map((r) => [r.id, r]));
+              setRequests((prev) => prev.map((r) => byId.get(r.id) ?? r));
+              setLog(readFinanceLog());
+              setQueued(pendingCount());
+            }}
+          />
 
           {/* Log de erros */}
           {log.length > 0 && (
