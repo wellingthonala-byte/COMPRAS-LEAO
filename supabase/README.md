@@ -22,7 +22,7 @@ backup primeiro.
 Duas reversões são parciais por limitação do Postgres, e ambas são inofensivas:
 
 - valores acrescentados a um `enum` não podem ser removidos (`app_role.financeiro`);
-- funções genéricas (`has_role`, `set_updated_at`) ficam comentadas no `down`
+- funções genéricas (`has_any_role`, `set_updated_at`) ficam comentadas no `down`
   para não quebrar outras migrations que venham a usá-las.
 
 ## ⚠️ `schema.sql` está obsoleto
