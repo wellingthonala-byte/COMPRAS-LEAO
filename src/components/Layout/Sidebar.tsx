@@ -1,12 +1,14 @@
-import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut, ShieldCheck, PiggyBank } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
-import { AppUser } from '../../data/users';
+import { AppUser, canViewFinance } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
 
+/** `financeOnly` esconde o item de quem não vê a projeção consolidada. */
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
   { icon: Kanban, label: 'Kanban', to: '/' },
   { icon: ClipboardList, label: 'Ordens de Serviço', to: '/ordens' },
+  { icon: PiggyBank, label: 'Financeiro', to: '/financeiro', financeOnly: true },
   { icon: BarChart3, label: 'Relatórios', to: '/relatorios' },
   { icon: Settings, label: 'Configurações', to: '/configuracoes' },
 ];
@@ -30,7 +32,9 @@ export function Sidebar({ currentUser, onLogout }: SidebarProps) {
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">
-        {navItems.map(({ icon: Icon, label, to }) => (
+        {navItems
+          .filter((item) => !item.financeOnly || canViewFinance(currentUser.role))
+          .map(({ icon: Icon, label, to }) => (
           <NavLink
             key={to}
             to={to}
