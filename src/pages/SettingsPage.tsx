@@ -3,12 +3,14 @@ import {
   Building2, Palette, Users, ShieldCheck, GitBranch, ShoppingCart, Truck, Bell,
   Plug, Lock, DatabaseBackup, SlidersHorizontal, ScrollText, KeyRound, Database,
   Search, Star, ChevronRight, Plus, Trash2, Pencil, X, Check, AlertTriangle,
-  Download, Upload, RotateCcw, Eye, EyeOff, CheckCircle2, CircleOff, Clock,
+  Download, Upload, RotateCcw, Eye, EyeOff, CheckCircle2, CircleOff, Clock, PiggyBank,
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { colorFromInitials } from '../utils/colors';
 import { PurchaseRequest } from '../types';
 import { AppUser, Role, loadUsers, saveUsers } from '../data/users';
+import { PAYMENT_TERMS_PRESETS } from '../lib/paymentTerms';
+import { nationalHolidays } from '../lib/finance';
 
 /* ================================================================== */
 /* Modelo de configurações (estrutura pronta para o banco de dados)    */
@@ -32,6 +34,10 @@ export interface AppSettings {
   suppliers: {
     categorias: string[]; criterioPrazo: number; criterioPreco: number; criterioQualidade: number;
     prazoAlvoDias: string; homologacaoObrigatoria: boolean; bloqueados: string[];
+  };
+  /** Lido em lib/financeSettings.ts pelo módulo de Controle Financeiro Futuro. */
+  finance: {
+    limboDays: string; extraHolidays: string[]; backfillTermsId: string; limboAlertEnabled: boolean;
   };
   notifications: {
     pushEnabled: boolean; ntfyTopic: string; emailEnabled: boolean; whatsappEnabled: boolean;
@@ -75,6 +81,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   approval: { niveis: 1, aprovacaoPorValor: false, valorAlcada: '', aprovacaoPorSetor: false, autoAprovarAbaixo: '', aprovacaoObrigatoria: true },
   purchasing: { numeracaoAutomatica: true, prefixo: '#', slaHorasMaquinaParada: '4', slaHorasUrgente: '24', prioridadePadrao: 'Não Urgente', categorias: ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'], centrosCusto: ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'], tiposSolicitacao: ['Material', 'Serviço'] },
   suppliers: { categorias: [], criterioPrazo: 40, criterioPreco: 40, criterioQualidade: 20, prazoAlvoDias: '7', homologacaoObrigatoria: false, bloqueados: [] },
+  finance: { limboDays: '7', extraHolidays: [], backfillTermsId: '30', limboAlertEnabled: true },
   notifications: { pushEnabled: true, ntfyTopic: 'clleao9274', emailEnabled: false, whatsappEnabled: false, evAprovacao: true, evReprovacao: true, evCompras: true, evRecebimento: true, evNovas: true },
   security: { mfa: false, sessaoMinutos: '480', ipPermitido: '', sso: false },
   customization: { nomeSistema: 'Compras Leão', rodape: '', idioma: 'Português (Brasil)', fuso: 'America/Sao_Paulo', formatoData: 'DD/MM/AAAA', formatoMoeda: 'R$ 1.234,56' },
@@ -111,7 +118,7 @@ function loadSettings(): AppSettings {
 /* ================================================================== */
 type SectionKey =
   | 'geral' | 'identidade' | 'usuarios' | 'perfis' | 'aprovacao' | 'compras'
-  | 'fornecedores' | 'notificacoes' | 'integracoes' | 'seguranca' | 'backup'
+  | 'fornecedores' | 'financeiro' | 'notificacoes' | 'integracoes' | 'seguranca' | 'backup'
   | 'personalizacao' | 'auditoria' | 'api' | 'banco';
 
 const SECTIONS: { key: SectionKey; label: string; icon: typeof Building2; critical?: boolean; keywords: string }[] = [
@@ -122,6 +129,7 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof Building2; critic
   { key: 'aprovacao', label: 'Fluxo de Aprovação', icon: GitBranch, keywords: 'aprovação alçada valor aprovador nível' },
   { key: 'compras', label: 'Compras', icon: ShoppingCart, keywords: 'numeração prefixo sla prioridade categoria centro de custo' },
   { key: 'fornecedores', label: 'Fornecedores', icon: Truck, keywords: 'fornecedor avaliação score homologação bloqueio' },
+  { key: 'financeiro', label: 'Financeiro', icon: PiggyBank, keywords: 'financeiro parcela previsão vencimento feriado limbo comprometido caixa' },
   { key: 'notificacoes', label: 'Notificações', icon: Bell, keywords: 'notificação push email whatsapp ntfy alerta' },
   { key: 'integracoes', label: 'Integrações', icon: Plug, keywords: 'erp api webhook smtp google microsoft slack teams power bi' },
   { key: 'seguranca', label: 'Segurança', icon: Lock, critical: true, keywords: 'mfa sessão ip sso login auditoria log' },
@@ -408,6 +416,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
                 {active === 'aprovacao' && <ApprovalSection settings={settings} patch={patch} />}
                 {active === 'compras' && <PurchasingSection settings={settings} patch={patch} />}
                 {active === 'fornecedores' && <SuppliersSection settings={settings} patch={patch} />}
+                {active === 'financeiro' && <FinanceSection settings={settings} patch={patch} />}
                 {active === 'notificacoes' && <NotificationsSection settings={settings} patch={patch} />}
                 {active === 'integracoes' && <IntegrationsSection />}
                 {active === 'seguranca' && <SecuritySection settings={settings} patch={patch} users={users} />}
@@ -558,7 +567,7 @@ function UsersSection({ users, persist, currentUser, showToast }: {
   const [showPwd, setShowPwd] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const roleLabel: Record<Role, string> = { gestor: 'Gestor', comprador: 'Comprador', solicitante: 'Solicitante' };
+  const roleLabel: Record<Role, string> = { gestor: 'Gestor', comprador: 'Comprador', financeiro: 'Financeiro', solicitante: 'Solicitante' };
 
   const startNew = () => {
     setIsNew(true);
@@ -632,7 +641,7 @@ function UsersSection({ users, persist, currentUser, showToast }: {
                   </td>
                   <td className="px-3 py-2.5">
                     <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                      u.role === 'gestor' ? 'bg-emerald-100 text-emerald-700' : u.role === 'comprador' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600'
+                      u.role === 'gestor' ? 'bg-emerald-100 text-emerald-700' : u.role === 'comprador' ? 'bg-violet-100 text-violet-700' : u.role === 'financeiro' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600'
                     }`}>{roleLabel[u.role]}</span>
                   </td>
                   <td className="px-3 py-2.5 text-xs text-slate-500">{u.email || '—'}</td>
@@ -715,8 +724,9 @@ function UsersSection({ users, persist, currentUser, showToast }: {
                 <label className="block text-xs font-medium text-slate-600 mb-1">Cargo / Perfil</label>
                 <select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value as Role })}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
-                  <option value="gestor">Gestor — aprova solicitações</option>
+                  <option value="gestor">Gestor — aprova solicitações e valores</option>
                   <option value="comprador">Comprador — movimenta o fluxo e cancela</option>
+                  <option value="financeiro">Financeiro — vê a projeção de parcelas</option>
                   <option value="solicitante">Solicitante — cria solicitações</option>
                 </select>
               </div>
@@ -865,6 +875,75 @@ function PurchasingSection({ settings, patch }: { settings: AppSettings; patch: 
       </Card>
       <Card title="Status Personalizados">
         <PendingBanner text="As 9 colunas atuais do Kanban são fixas para garantir a consistência do fluxo. Status personalizados serão liberados junto com o backend, usando esta configuração." />
+      </Card>
+    </div>
+  );
+}
+
+function FinanceSection({ settings, patch }: { settings: AppSettings; patch: PatchFn }) {
+  const f = settings.finance;
+  const year = new Date().getFullYear();
+  return (
+    <div className="space-y-4">
+      <Card
+        title="Projeção de Parcelas"
+        subtitle="As parcelas nascem quando o gestor aprova o valor cotado, não quando a compra acontece"
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-3">
+          <Field
+            label="Alerta de pedido aprovado e não comprado (dias)"
+            value={f.limboDays} type="number"
+            onChange={(v) => patch('finance', { limboDays: v })}
+          />
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Condição assumida no backfill
+            </label>
+            <select
+              value={f.backfillTermsId}
+              onChange={(e) => patch('finance', { backfillTermsId: e.target.value })}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              {PAYMENT_TERMS_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </select>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Usada só para pedidos antigos que não têm condição registrada.
+            </p>
+          </div>
+        </div>
+        <Toggle
+          label="Alertar por ntfy os pedidos parados no limbo"
+          hint="Uma notificação por pedido por dia, enviada a gestor e financeiro"
+          checked={f.limboAlertEnabled}
+          onChange={(v) => patch('finance', { limboAlertEnabled: v })}
+        />
+      </Card>
+
+      <Card
+        title="Regra de Vencimento"
+        subtitle="Vencimento em fim de semana ou feriado antecipa para o dia útil anterior"
+      >
+        <p className="text-xs text-slate-500 py-2">
+          Os feriados nacionais são calculados automaticamente, inclusive os móveis
+          (Carnaval, Sexta-feira Santa e Corpus Christi, derivados da Páscoa). Carnaval entra
+          porque é feriado bancário — o que importa é quando o dinheiro sai do caixa.
+        </p>
+        <TagEditor
+          label={`Feriados municipais e regionais (AAAA-MM-DD)`}
+          tags={f.extraHolidays}
+          onChange={(t) => patch('finance', { extraHolidays: t })}
+          placeholder={`${year}-08-24`}
+        />
+        <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mt-3">
+          <p className="text-[11px] font-medium text-slate-600 mb-1.5">Feriados nacionais de {year}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {nationalHolidays(year).map((h) => (
+              <span key={h.date} className="text-[10px] bg-white border border-slate-200 rounded px-1.5 py-0.5 text-slate-600">
+                {h.date.slice(8, 10)}/{h.date.slice(5, 7)} {h.name}
+              </span>
+            ))}
+          </div>
+        </div>
       </Card>
     </div>
   );

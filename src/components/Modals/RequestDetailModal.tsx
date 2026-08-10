@@ -1,9 +1,13 @@
-import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw, Printer } from 'lucide-react';
+import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw, Printer, PiggyBank } from 'lucide-react';
 import { printPurchaseRequest } from '../../utils/printDocument';
 import { ObjectLinkView } from '../UI/ObjectLink';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
+import { PaymentTerms } from '../../types/finance';
+import { formatPaymentTerms, isPaymentTermsValid } from '../../lib/paymentTerms';
+import { canProjectInstallments, previewInstallments } from '../../lib/financeSync';
+import { PaymentTermsField } from '../UI/PaymentTermsField';
 import { AppUser } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
@@ -16,9 +20,13 @@ interface RequestDetailModalProps {
   onClose: () => void;
   onAdvanceStatus: (id: string) => void;
   onApprove: (id: string, approverName: string, approvalId: string) => void;
+  onApproveValue: (id: string) => void;
   onEdit: (id: string, fields: Partial<PurchaseRequest>) => void;
   onCancel: (id: string, reason: string) => void;
 }
+
+const fmtValue = (v: number | undefined) =>
+  v === undefined ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Nova Solicitação': <FileText size={14} />,
@@ -31,12 +39,22 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Finalizado': <ChevronRight size={14} />,
 };
 
-export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onApprove, onEdit, onCancel }: RequestDetailModalProps) {
+export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onApprove, onApproveValue, onEdit, onCancel }: RequestDetailModalProps) {
   const currentIdx = STATUS_ORDER.indexOf(request.status);
   const isApprovalStep = request.status === 'Em Aprovação';
   const isApproved = !!request.approvedBy;
   const isCancelled = request.status === 'Cancelada';
   const isFinalized = request.status === 'Finalizado';
+
+  // A aprovação de valor acontece na cotação, quando valor e condição de
+  // pagamento já existem — a aprovação de mérito acima ocorre antes disso.
+  const hasValueApproval = !!request.valueApproval;
+  const canProject = canProjectInstallments(request);
+  const isValueApprovalStep = !isCancelled && (request.status === 'Em Cotação' || hasValueApproval);
+  const preview = useMemo(
+    () => (isValueApprovalStep && !hasValueApproval && canProject ? previewInstallments(request) : []),
+    [isValueApprovalStep, hasValueApproval, canProject, request]
+  );
   const totalOpenObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
   const canAdvance = currentIdx >= 0 && currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
 
@@ -57,9 +75,11 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
     value: request.value !== undefined ? String(request.value) : '',
     orderNumber: request.orderNumber || '',
     fiscalNote: request.fiscalNote || '',
+    fiscalNoteDate: request.fiscalNoteDate || '',
     deliveryForecast: request.deliveryForecast || '',
     realDeliveryDate: request.realDeliveryDate || '',
   });
+  const [termsDraft, setTermsDraft] = useState<PaymentTerms | undefined>(request.paymentTerms);
 
   const handleAddObjection = (itemId: string) => {
     if (!objectionText.trim()) return;
@@ -184,13 +204,35 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   };
 
   const handleSaveSupplier = () => {
+    const newValue = supplierDraft.value ? parseFloat(supplierDraft.value.replace(',', '.')) : undefined;
+    // Alterações que mexem na projeção financeira entram no histórico: o valor
+    // aprovado e a data-base do parcelamento derivam desses três campos.
+    const changes: string[] = [];
+    if (newValue !== request.value) changes.push(`valor: ${fmtValue(request.value)} → ${fmtValue(newValue)}`);
+    if (formatPaymentTerms(termsDraft) !== formatPaymentTerms(request.paymentTerms)) {
+      changes.push(`condição de pagamento: ${formatPaymentTerms(request.paymentTerms) || '—'} → ${formatPaymentTerms(termsDraft) || '—'}`);
+    }
+    if ((supplierDraft.fiscalNoteDate || '') !== (request.fiscalNoteDate || '')) {
+      changes.push(`data da NF: ${request.fiscalNoteDate ? formatDate(request.fiscalNoteDate) : '—'} → ${supplierDraft.fiscalNoteDate ? formatDate(supplierDraft.fiscalNoteDate) : '—'}`);
+    }
+
     onEdit(request.id, {
       supplier: supplierDraft.supplier || undefined,
-      value: supplierDraft.value ? parseFloat(supplierDraft.value.replace(',', '.')) : undefined,
+      value: newValue,
       orderNumber: supplierDraft.orderNumber || undefined,
       fiscalNote: supplierDraft.fiscalNote || undefined,
+      fiscalNoteDate: supplierDraft.fiscalNoteDate || undefined,
+      paymentTerms: termsDraft,
       deliveryForecast: supplierDraft.deliveryForecast,
       realDeliveryDate: supplierDraft.realDeliveryDate || undefined,
+      ...(changes.length > 0 ? {
+        history: [...request.history, {
+          id: `h-${Date.now()}`,
+          date: new Date().toISOString(),
+          user: currentUser.name,
+          action: `Cotação atualizada — ${changes.join('; ')}`,
+        }],
+      } : {}),
     });
     setEditingSupplier(false);
   };
@@ -364,6 +406,17 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
+                    <PaymentTermsField value={termsDraft} onChange={setTermsDraft} />
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Data da Nota Fiscal</label>
+                      <input type="date" value={supplierDraft.fiscalNoteDate} onChange={(e) => setSupplierDraft(d => ({ ...d, fiscalNoteDate: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Data-base definitiva do parcelamento. Ao ser informada, as parcelas são recalculadas.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-slate-400 block mb-1">Previsão de Entrega</label>
                       <input type="date" value={supplierDraft.deliveryForecast} onChange={(e) => setSupplierDraft(d => ({ ...d, deliveryForecast: e.target.value }))}
@@ -397,7 +450,26 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   </div>
                   <div>
                     <p className="text-xs text-slate-400">Nota Fiscal</p>
-                    <p className="text-sm text-slate-700 mt-0.5">{request.fiscalNote || '-'}</p>
+                    <p className="text-sm text-slate-700 mt-0.5">
+                      {request.fiscalNote || '-'}
+                      {request.fiscalNoteDate && <span className="text-slate-400"> · {formatDate(request.fiscalNoteDate)}</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-xs text-slate-400">Condição de Pagamento</p>
+                    {isPaymentTermsValid(request.paymentTerms) ? (
+                      <p className="text-sm text-slate-700 mt-0.5">{formatPaymentTerms(request.paymentTerms)}</p>
+                    ) : (
+                      <p className="text-sm text-amber-600 mt-0.5">Não definida</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Parcelas Projetadas</p>
+                    <p className="text-sm text-slate-700 mt-0.5">
+                      {isPaymentTermsValid(request.paymentTerms) ? `${request.paymentTerms.days.length}x` : '-'}
+                    </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -636,6 +708,90 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                 <div className="space-y-2">
                   <p className="text-xs text-yellow-700">Esta solicitação aguarda aprovação de um gestor.</p>
                   <p className="text-xs text-slate-500">Apenas usuários com perfil de <strong>Gestor</strong> podem aprovar.</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Aprovação de Valor do Gestor — onde nasce o compromisso financeiro */}
+          {isValueApprovalStep && (
+            <div className={`rounded-xl p-4 border ${hasValueApproval ? 'bg-teal-50 border-teal-200' : canProject ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-200'}`}>
+              <div className="flex items-center gap-2 mb-3">
+                {hasValueApproval ? <PiggyBank size={16} className="text-teal-600" /> : <ShieldAlert size={16} className="text-yellow-600" />}
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Aprovação de Valor</h3>
+              </div>
+
+              {hasValueApproval ? (
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-teal-700">
+                    ✓ Valor de {fmtValue(request.valueApproval!.approvedValue)} aprovado por {request.valueApproval!.approvedBy}
+                  </p>
+                  <p className="text-xs text-teal-600">
+                    Condição: <strong>{request.valueApproval!.paymentTermsLabel}</strong> · ID: <strong>{request.valueApproval!.approvalId}</strong>
+                  </p>
+                  <p className="text-xs text-teal-500">
+                    Em {formatDateTime(request.valueApproval!.approvedAt)} — parcelas na projeção financeira.
+                  </p>
+                </div>
+              ) : !canProject ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-slate-600">
+                    O valor só pode ser aprovado depois de o comprador informar <strong>valor</strong> e{' '}
+                    <strong>condição de pagamento</strong> na cotação.
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Faltando: {[
+                      !(request.value && request.value > 0) ? 'valor' : null,
+                      !isPaymentTermsValid(request.paymentTerms) ? 'condição de pagamento' : null,
+                    ].filter(Boolean).join(' e ')}.
+                  </p>
+                </div>
+              ) : currentUser.role === 'gestor' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-yellow-700">
+                    Ao aprovar, o valor entra na projeção financeira como compromisso dos próximos meses.
+                  </p>
+                  <div className="bg-white border border-yellow-200 rounded-lg px-3 py-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">Valor cotado</span>
+                      <span className="text-sm font-semibold text-slate-800">{fmtValue(request.value)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-500">Condição</span>
+                      <span className="text-sm font-medium text-slate-700">{formatPaymentTerms(request.paymentTerms)}</span>
+                    </div>
+                    <div className="border-t border-slate-100 pt-2">
+                      <p className="text-[11px] text-slate-400 mb-1.5">
+                        Parcelas projetadas (contagem provisória a partir de hoje; será refeita pela data da nota fiscal)
+                      </p>
+                      <div className="space-y-1">
+                        {preview.map((p) => (
+                          <div key={p.id} className="flex items-center justify-between text-xs">
+                            <span className="text-slate-500">
+                              {p.number}/{p.count} · D+{p.offsetDays} · vence {formatDate(p.dueDate)}
+                            </span>
+                            <span className="font-medium text-slate-700">{fmtValue(p.amount)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => onApproveValue(request.id)}
+                    className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    <PiggyBank size={14} />
+                    Aprovar Valor e Projetar Parcelas
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-yellow-700">
+                    Cotação pronta: {fmtValue(request.value)} em {formatPaymentTerms(request.paymentTerms)}.
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Aguardando o <strong>Gestor</strong> aprovar o valor para gerar as parcelas previstas.
+                  </p>
                 </div>
               )}
             </div>

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { colorFromInitials } from '../utils/colors';
+import { exportCSV, exportExcel } from '../utils/export';
 import { PurchaseRequest, Status, Priority } from '../types';
 
 /* ------------------------------------------------------------------ */
@@ -99,29 +100,6 @@ function fmtHours(h: number | null): string {
   if (h < 1) return `${Math.round(h * 60)}min`;
   if (h < 48) return `${h.toFixed(1).replace('.', ',')}h`;
   return `${(h / 24).toFixed(1).replace('.', ',')}d`;
-}
-
-/* ------------------------------------------------------------------ */
-/* Exportação (CSV / Excel / Impressão) — sem dependências             */
-/* ------------------------------------------------------------------ */
-function downloadBlob(content: string, filename: string, mime: string) {
-  const blob = new Blob(['﻿' + content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-function exportCSV(headers: string[], rows: (string | number)[][], name: string) {
-  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-  const csv = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))].join('\n');
-  downloadBlob(csv, `${name}.csv`, 'text/csv;charset=utf-8');
-}
-function exportExcel(headers: string[], rows: (string | number)[][], name: string) {
-  const esc = (v: string | number) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const html = `<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table border="1"><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
-  downloadBlob(html, `${name}.xls`, 'application/vnd.ms-excel');
 }
 
 /* ------------------------------------------------------------------ */

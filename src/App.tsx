@@ -5,12 +5,15 @@ import { KanbanPage } from './pages/KanbanPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { NewRequestPage } from './pages/NewRequestPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { FinancePage } from './pages/FinancePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ServiceOrdersPage } from './pages/ServiceOrdersPage';
 import { LoginPage } from './pages/LoginPage';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
 import { fetchRequests, upsertRequests, logoutSupabase } from './lib/backend';
+import { initInstallments } from './lib/financeStore';
+import { useLimboAlert } from './lib/useFinanceAlerts';
 
 const REQUESTS_KEY = 'compras-leao-requests';
 const USER_KEY = 'compras-leao-user';
@@ -58,6 +61,9 @@ export default function App() {
     if (!currentUser) return;
     let cancelled = false;
     setSyncState('syncing');
+    // As parcelas têm cache e fila próprios (lib/financeStore) e carregam em
+    // paralelo: uma falha aqui não deve impedir o Kanban de abrir.
+    void initInstallments();
     fetchRequests().then((remote) => {
       if (cancelled) return;
       if (remote === null) {
@@ -84,6 +90,10 @@ export default function App() {
     return () => clearTimeout(t);
   }, [requests, currentUser]);
 
+  // Alerta de pedidos aprovados e não comprados. Fica aqui, e não na tela do
+  // Financeiro, para disparar no login independentemente da página aberta.
+  useLimboAlert(requests, currentUser);
+
   const handleLogout = () => {
     logoutSupabase();
     setCurrentUser(null);
@@ -108,9 +118,10 @@ export default function App() {
       <Sidebar currentUser={currentUser} onLogout={handleLogout} />
       <Routes>
         <Route path="/" element={<KanbanPage requests={requests} setRequests={setRequests} currentUser={currentUser} />} />
-        <Route path="/dashboard" element={<DashboardPage requests={requests} />} />
+        <Route path="/dashboard" element={<DashboardPage requests={requests} currentUser={currentUser} />} />
         <Route path="/nova-solicitacao" element={<NewRequestPage requests={requests} currentUser={currentUser} onAdd={(r) => setRequests((prev) => [r, ...prev])} />} />
         <Route path="/ordens" element={<ServiceOrdersPage currentUser={currentUser} requests={requests} onCreatePurchaseRequest={(r) => setRequests((prev) => [r, ...prev])} />} />
+        <Route path="/financeiro" element={<FinancePage requests={requests} setRequests={setRequests} currentUser={currentUser} />} />
         <Route path="/relatorios" element={<ReportsPage requests={requests} />} />
         <Route path="/configuracoes" element={<SettingsPage currentUser={currentUser} requests={requests} />} />
       </Routes>
