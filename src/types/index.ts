@@ -1,3 +1,5 @@
+import { PaymentTerms, ValueApproval } from './finance';
+
 export type Priority = 'Não Urgente' | 'Urgente' | 'Máquina Parada';
 export type Status = 'Nova Solicitação' | 'Em Aprovação' | 'Em Cotação' | 'Comprado' | 'Em Rota' | 'Em Serviço' | 'Disponível para Retirada' | 'Finalizado' | 'Cancelada';
 export type Sector = 'Produção' | 'Manutenção' | 'Administrativo' | 'TI' | 'RH' | 'Logística';
@@ -29,6 +31,10 @@ export interface PurchaseRequest {
   value?: number;
   orderNumber?: string;
   fiscalNote?: string;
+  /** Data de emissão da nota fiscal (YYYY-MM-DD) — data-base definitiva do parcelamento. */
+  fiscalNoteDate?: string;
+  /** Condição de pagamento definida pelo comprador na cotação. */
+  paymentTerms?: PaymentTerms;
   items: Item[];
   observations?: string;
   objectLink?: string;
@@ -36,6 +42,12 @@ export interface PurchaseRequest {
   approvedBy?: string;
   approvalId?: string;
   approvedAt?: string;
+  /**
+   * Segunda aprovação: o gestor aprova o VALOR cotado. É aqui que nasce o
+   * compromisso financeiro — a aprovação acima (approvedBy) é de mérito e
+   * acontece antes da cotação, quando o valor ainda não existe.
+   */
+  valueApproval?: ValueApproval;
   cancelledBy?: string;
   cancelledAt?: string;
   cancelReason?: string;

@@ -1,5 +1,6 @@
 import { PurchaseRequest } from '../types';
 import { ServiceOrder, osCost, osElapsedHours } from '../types/serviceOrders';
+import { formatPaymentTerms, isPaymentTermsValid } from '../lib/paymentTerms';
 
 /* ================================================================== */
 /* Módulo reutilizável de impressão — documento corporativo A4         */
@@ -296,6 +297,24 @@ function openPrintWindow(doc: PrintDoc): void {
 /* ------------------------------------------------------------------ */
 /* Solicitação / Pedido de Compra                                      */
 /* ------------------------------------------------------------------ */
+/**
+ * Texto da seção "Condições de Pagamento" do pedido impresso.
+ * A seção existia no gerador desde o início, mas nunca era alimentada.
+ */
+function buildPaymentTermsText(r: PurchaseRequest): string | undefined {
+  if (!isPaymentTermsValid(r.paymentTerms)) return undefined;
+  const parts = [formatPaymentTerms(r.paymentTerms)];
+  if (r.fiscalNoteDate) {
+    parts.push(`Contagem a partir da nota fiscal de ${new Date(r.fiscalNoteDate + 'T12:00:00').toLocaleDateString('pt-BR')}.`);
+  } else {
+    parts.push('Contagem a partir da emissão da nota fiscal.');
+  }
+  if (r.valueApproval) {
+    parts.push(`Valor aprovado por ${r.valueApproval.approvedBy} em ${new Date(r.valueApproval.approvedAt).toLocaleDateString('pt-BR')} (ID ${r.valueApproval.approvalId}).`);
+  }
+  return parts.join(' ');
+}
+
 export function printPurchaseRequest(r: PurchaseRequest, generatedBy: string): void {
   const hasValue = r.value !== undefined && r.value > 0;
   const totalQty = Math.max(r.items.reduce((s, i) => s + i.quantity, 0), 1);
@@ -355,6 +374,7 @@ export function printPurchaseRequest(r: PurchaseRequest, generatedBy: string): v
       },
     ],
     observations: r.observations,
+    paymentTerms: buildPaymentTermsText(r),
     signatures: [r.approvedBy ?? 'Responsável / Gestor', r.supplier ?? r.requester],
     generatedBy,
   });

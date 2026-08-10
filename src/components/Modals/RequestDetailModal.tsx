@@ -4,6 +4,9 @@ import { ObjectLinkView } from '../UI/ObjectLink';
 import { useState } from 'react';
 import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
+import { PaymentTerms } from '../../types/finance';
+import { formatPaymentTerms, isPaymentTermsValid } from '../../lib/paymentTerms';
+import { PaymentTermsField } from '../UI/PaymentTermsField';
 import { AppUser } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
@@ -19,6 +22,9 @@ interface RequestDetailModalProps {
   onEdit: (id: string, fields: Partial<PurchaseRequest>) => void;
   onCancel: (id: string, reason: string) => void;
 }
+
+const fmtValue = (v: number | undefined) =>
+  v === undefined ? '—' : v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Nova Solicitação': <FileText size={14} />,
@@ -57,9 +63,11 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
     value: request.value !== undefined ? String(request.value) : '',
     orderNumber: request.orderNumber || '',
     fiscalNote: request.fiscalNote || '',
+    fiscalNoteDate: request.fiscalNoteDate || '',
     deliveryForecast: request.deliveryForecast || '',
     realDeliveryDate: request.realDeliveryDate || '',
   });
+  const [termsDraft, setTermsDraft] = useState<PaymentTerms | undefined>(request.paymentTerms);
 
   const handleAddObjection = (itemId: string) => {
     if (!objectionText.trim()) return;
@@ -184,13 +192,35 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   };
 
   const handleSaveSupplier = () => {
+    const newValue = supplierDraft.value ? parseFloat(supplierDraft.value.replace(',', '.')) : undefined;
+    // Alterações que mexem na projeção financeira entram no histórico: o valor
+    // aprovado e a data-base do parcelamento derivam desses três campos.
+    const changes: string[] = [];
+    if (newValue !== request.value) changes.push(`valor: ${fmtValue(request.value)} → ${fmtValue(newValue)}`);
+    if (formatPaymentTerms(termsDraft) !== formatPaymentTerms(request.paymentTerms)) {
+      changes.push(`condição de pagamento: ${formatPaymentTerms(request.paymentTerms) || '—'} → ${formatPaymentTerms(termsDraft) || '—'}`);
+    }
+    if ((supplierDraft.fiscalNoteDate || '') !== (request.fiscalNoteDate || '')) {
+      changes.push(`data da NF: ${request.fiscalNoteDate ? formatDate(request.fiscalNoteDate) : '—'} → ${supplierDraft.fiscalNoteDate ? formatDate(supplierDraft.fiscalNoteDate) : '—'}`);
+    }
+
     onEdit(request.id, {
       supplier: supplierDraft.supplier || undefined,
-      value: supplierDraft.value ? parseFloat(supplierDraft.value.replace(',', '.')) : undefined,
+      value: newValue,
       orderNumber: supplierDraft.orderNumber || undefined,
       fiscalNote: supplierDraft.fiscalNote || undefined,
+      fiscalNoteDate: supplierDraft.fiscalNoteDate || undefined,
+      paymentTerms: termsDraft,
       deliveryForecast: supplierDraft.deliveryForecast,
       realDeliveryDate: supplierDraft.realDeliveryDate || undefined,
+      ...(changes.length > 0 ? {
+        history: [...request.history, {
+          id: `h-${Date.now()}`,
+          date: new Date().toISOString(),
+          user: currentUser.name,
+          action: `Cotação atualizada — ${changes.join('; ')}`,
+        }],
+      } : {}),
     });
     setEditingSupplier(false);
   };
@@ -364,6 +394,17 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
+                    <PaymentTermsField value={termsDraft} onChange={setTermsDraft} />
+                    <div>
+                      <label className="text-xs text-slate-400 block mb-1">Data da Nota Fiscal</label>
+                      <input type="date" value={supplierDraft.fiscalNoteDate} onChange={(e) => setSupplierDraft(d => ({ ...d, fiscalNoteDate: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                      <p className="text-[11px] text-slate-400 mt-1">
+                        Data-base definitiva do parcelamento. Ao ser informada, as parcelas são recalculadas.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-xs text-slate-400 block mb-1">Previsão de Entrega</label>
                       <input type="date" value={supplierDraft.deliveryForecast} onChange={(e) => setSupplierDraft(d => ({ ...d, deliveryForecast: e.target.value }))}
@@ -397,7 +438,26 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   </div>
                   <div>
                     <p className="text-xs text-slate-400">Nota Fiscal</p>
-                    <p className="text-sm text-slate-700 mt-0.5">{request.fiscalNote || '-'}</p>
+                    <p className="text-sm text-slate-700 mt-0.5">
+                      {request.fiscalNote || '-'}
+                      {request.fiscalNoteDate && <span className="text-slate-400"> · {formatDate(request.fiscalNoteDate)}</span>}
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-xs text-slate-400">Condição de Pagamento</p>
+                    {isPaymentTermsValid(request.paymentTerms) ? (
+                      <p className="text-sm text-slate-700 mt-0.5">{formatPaymentTerms(request.paymentTerms)}</p>
+                    ) : (
+                      <p className="text-sm text-amber-600 mt-0.5">Não definida</p>
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-400">Parcelas Projetadas</p>
+                    <p className="text-sm text-slate-700 mt-0.5">
+                      {isPaymentTermsValid(request.paymentTerms) ? `${request.paymentTerms.days.length}x` : '-'}
+                    </p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
