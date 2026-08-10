@@ -1,4 +1,20 @@
 -- =====================================================================
+-- ⚠️  OBSOLETO — NÃO EXECUTE ESTE ARQUIVO
+--
+-- Este esquema não corresponde ao banco em produção. Ele descreve
+-- purchase_requests/service_orders com `id text` e uma coluna `data jsonb`,
+-- além de app_users com senha em texto plano. Nada disso é consultado pelo
+-- código: veja src/lib/backend.ts.
+--
+-- O esquema real é o de clone-schema.sql (id uuid, request_number,
+-- requester_id, coluna extra jsonb, e as tabelas request_items, suppliers,
+-- status_history, profiles, user_roles).
+--
+-- Mantido apenas como registro histórico da primeira versão.
+-- Consulte supabase/README.md para a ordem correta de aplicação.
+-- =====================================================================
+
+-- =====================================================================
 -- COMPRAS LEÃO — Esquema do banco (Supabase / Postgres)
 -- Execute no SQL Editor do Supabase (Dashboard > SQL Editor > New query)
 -- Pode rodar mais de uma vez sem problema (IF NOT EXISTS).

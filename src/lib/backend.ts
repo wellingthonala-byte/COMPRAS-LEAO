@@ -1,6 +1,7 @@
 import { getSupabase } from './supabase';
 import { PurchaseRequest, Status, Priority, Sector, Item, HistoryEntry } from '../types';
 import { ServiceOrder, OSStatus } from '../types/serviceOrders';
+import { BaseDateSource, Installment, InstallmentStatus } from '../types/finance';
 import { AppUser, Role } from '../data/users';
 
 /* ================================================================== */
@@ -308,6 +309,115 @@ export async function upsertServiceOrders(allOrders: ServiceOrder[]): Promise<vo
 }
 
 /* ================================================================== */
+/* Parcelas previstas (módulo de Controle Financeiro Futuro)            */
+/* ================================================================== */
+const INSTALLMENT_STATUS_DB_TO_UI: Record<string, InstallmentStatus> = {
+  previsto: 'Previsto', confirmado: 'Confirmado', pago: 'Pago', cancelado: 'Cancelado',
+};
+const INSTALLMENT_STATUS_UI_TO_DB = Object.fromEntries(
+  Object.entries(INSTALLMENT_STATUS_DB_TO_UI).map(([k, v]) => [v, k])
+);
+
+interface DBInstallmentRow {
+  id: string; request_id: string; installment_number: number; installment_count: number;
+  amount: number | string; due_date: string; offset_days: number;
+  base_date: string; base_date_source: string; status: string; payment_terms_label: string | null;
+  origin_amount: number | string; origin_due_date: string; origin_base_date: string;
+  origin_base_date_source: string; origin_created_at: string;
+  paid_at: string | null; paid_amount: number | string | null; cancelled_at: string | null;
+  divergence_note: string | null; created_at: string; updated_at: string;
+}
+
+/** numeric do Postgres chega como string no supabase-js */
+const num = (v: number | string | null | undefined): number => (v === null || v === undefined ? 0 : Number(v));
+
+function rowToInstallment(row: DBInstallmentRow): Installment {
+  return {
+    id: row.id,
+    requestId: row.request_id,
+    number: row.installment_number,
+    count: row.installment_count,
+    amount: num(row.amount),
+    dueDate: row.due_date,
+    offsetDays: row.offset_days,
+    baseDate: row.base_date,
+    baseDateSource: row.base_date_source as BaseDateSource,
+    status: INSTALLMENT_STATUS_DB_TO_UI[row.status] ?? 'Previsto',
+    paymentTermsLabel: row.payment_terms_label ?? '',
+    origin: {
+      amount: num(row.origin_amount),
+      dueDate: row.origin_due_date,
+      baseDate: row.origin_base_date,
+      baseDateSource: row.origin_base_date_source as BaseDateSource,
+      createdAt: row.origin_created_at,
+    },
+    paidAt: row.paid_at ?? undefined,
+    paidAmount: row.paid_amount === null ? undefined : num(row.paid_amount),
+    cancelledAt: row.cancelled_at ?? undefined,
+    divergenceNote: row.divergence_note ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function installmentToRow(i: Installment): Record<string, unknown> {
+  return {
+    id: i.id,
+    request_id: i.requestId,
+    installment_number: i.number,
+    installment_count: i.count,
+    amount: i.amount,
+    due_date: i.dueDate,
+    offset_days: i.offsetDays,
+    base_date: i.baseDate,
+    base_date_source: i.baseDateSource,
+    status: INSTALLMENT_STATUS_UI_TO_DB[i.status] ?? 'previsto',
+    payment_terms_label: i.paymentTermsLabel,
+    origin_amount: i.origin.amount,
+    origin_due_date: i.origin.dueDate,
+    origin_base_date: i.origin.baseDate,
+    origin_base_date_source: i.origin.baseDateSource,
+    origin_created_at: i.origin.createdAt,
+    paid_at: i.paidAt ?? null,
+    paid_amount: i.paidAmount ?? null,
+    cancelled_at: i.cancelledAt ?? null,
+    divergence_note: i.divergenceNote ?? null,
+    created_at: i.createdAt,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+/** Retorna null quando o servidor não responde — mesma convenção de fetchRequests. */
+export async function fetchInstallments(): Promise<Installment[] | null> {
+  try {
+    const sb = getSupabase();
+    const rows = await withTimeout(fetchAllPages<DBInstallmentRow>((from, to) =>
+      sb.from('purchase_installments').select('*').order('due_date', { ascending: true }).range(from, to)));
+    return rows.map(rowToInstallment);
+  } catch (e) {
+    console.warn('[backend] fetchInstallments falhou — usando dados locais:', e);
+    return null;
+  }
+}
+
+/**
+ * Grava parcelas. Lança em caso de falha, ao contrário de upsertRequests:
+ * quem chama precisa saber do erro para enfileirar o reprocessamento.
+ */
+export async function upsertInstallments(items: Installment[]): Promise<void> {
+  // Solicitações de teste locais (id não-UUID) não têm linha no banco
+  const valid = items.filter((i) => UUID_RE.test(i.requestId) && UUID_RE.test(i.id));
+  if (valid.length === 0) return;
+  const sb = getSupabase();
+  for (let i = 0; i < valid.length; i += 200) {
+    const { error } = await sb
+      .from('purchase_installments')
+      .upsert(valid.slice(i, i + 200).map(installmentToRow), { onConflict: 'id' });
+    if (error) throw error;
+  }
+}
+
+/* ================================================================== */
 /* Autenticação (Supabase Auth + papéis de user_roles)                  */
 /* ================================================================== */
 export async function loginWithSupabase(email: string, password: string): Promise<AppUser | null> {
@@ -321,7 +431,9 @@ export async function loginWithSupabase(email: string, password: string): Promis
   ]);
   const name = profile?.full_name ?? data.user.email ?? 'Usuário';
   const dbRoles: string[] = (roles ?? []).map((r: { role: string }) => r.role);
+  // admin herda a visão do gestor (inclusive a projeção financeira consolidada)
   const role: Role = dbRoles.includes('admin') || dbRoles.includes('gestor') ? 'gestor'
+    : dbRoles.includes('financeiro') ? 'financeiro'
     : dbRoles.includes('compras') ? 'comprador' : 'solicitante';
   return {
     id: uid,
