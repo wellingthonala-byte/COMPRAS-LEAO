@@ -326,7 +326,7 @@ export function printPurchaseRequest(r: PurchaseRequest, generatedBy: string): v
     status: r.status,
     metaRight: [
       ['Prioridade', r.priority],
-      ['Previsão de entrega', new Date(r.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR')],
+      ['Previsão de entrega', r.deliveryForecast ? new Date(r.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR') : '—'],
     ],
     party: r.supplier ? {
       title: 'Informações do Fornecedor',
@@ -368,7 +368,7 @@ export function printPurchaseRequest(r: PurchaseRequest, generatedBy: string): v
           ...(r.objectLink ? [['Link do objeto', r.objectLink] as [string, string]] : []),
           ['Categoria', r.items[0]?.application || '—'],
           ['Incluído em', new Date(r.createdAt).toLocaleString('pt-BR')],
-          ['Previsão de entrega', new Date(r.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR')],
+          ['Previsão de entrega', r.deliveryForecast ? new Date(r.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR') : '—'],
           ...(r.realDeliveryDate ? [['Entrega realizada', new Date(r.realDeliveryDate + 'T12:00:00').toLocaleDateString('pt-BR')] as [string, string]] : []),
         ],
       },

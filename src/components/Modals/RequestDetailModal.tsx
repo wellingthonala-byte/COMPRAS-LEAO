@@ -238,7 +238,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   };
 
   const formatDate = (dateStr: string) =>
-    new Date(dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
+    dateStr ? new Date(dateStr.includes('T') ? dateStr : dateStr + 'T12:00:00').toLocaleDateString('pt-BR') : '—';
   const formatDateTime = (dateStr: string) =>
     new Date(dateStr).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
