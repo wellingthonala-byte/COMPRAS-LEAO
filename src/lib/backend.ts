@@ -82,7 +82,9 @@ function rowToRequest(row: DBRequestRow, profileNames: Map<string, string>): Pur
       quantity: it.quantity,
       application: it.application ?? '',
       priority: PRIORITY_DB_TO_UI[it.priority ?? 'nao_urgente'] ?? 'Não Urgente',
-      deliveryForecast: it.expected_delivery_date ?? row.expected_delivery_date ?? row.created_at.slice(0, 10),
+      // Sem previsão de entrega no sistema antigo → fica vazio (mostra "—"),
+      // nunca a data de criação. Copiar createdAt daria uma previsão falsa.
+      deliveryForecast: it.expected_delivery_date ?? row.expected_delivery_date ?? '',
       technicalSpec: it.technical_spec ?? undefined,
       observations: it.observations ?? undefined,
       objections: it.has_objection && it.objection_notes
@@ -107,13 +109,13 @@ function rowToRequest(row: DBRequestRow, profileNames: Map<string, string>): Pur
     priority: PRIORITY_DB_TO_UI[row.priority] ?? 'Não Urgente',
     status: STATUS_DB_TO_UI[row.status] ?? 'Em Cotação',
     createdAt: row.created_at,
-    deliveryForecast: row.expected_delivery_date ?? row.created_at.slice(0, 10),
+    deliveryForecast: row.expected_delivery_date ?? '',
     realDeliveryDate: row.actual_delivery_date ?? undefined,
     supplier: supplier?.name,
     value: supplier?.value ?? undefined,
     orderNumber: supplier?.order_number ?? undefined,
     fiscalNote: supplier?.invoice_number ?? undefined,
-    items: items.length ? items : [{ id: `i-${row.id}`, description: '(sem itens)', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: row.created_at.slice(0, 10) }],
+    items: items.length ? items : [{ id: `i-${row.id}`, description: '(sem itens)', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: row.expected_delivery_date ?? '' }],
     observations: row.observations ?? undefined,
     history: history.length ? history : [{ id: `h-${row.id}`, date: row.created_at, user: requester, action: 'Solicitação criada', to: STATUS_DB_TO_UI[row.status] }],
   };

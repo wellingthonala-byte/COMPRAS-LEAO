@@ -18,8 +18,9 @@ const priorityBorderColor: Record<string, string> = {
 export function KanbanCard({ request, onClick }: KanbanCardProps) {
   const isCancelled = request.status === 'Cancelada';
   const borderColor = isCancelled ? 'border-l-slate-300' : priorityBorderColor[request.priority];
-  const isOverdue = new Date(request.deliveryForecast + 'T23:59:59') < new Date() && request.status !== 'Finalizado' && !isCancelled;
-  const dateFormatted = new Date(request.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const hasForecast = !!request.deliveryForecast;
+  const isOverdue = hasForecast && new Date(request.deliveryForecast + 'T23:59:59') < new Date() && request.status !== 'Finalizado' && !isCancelled;
+  const dateFormatted = hasForecast ? new Date(request.deliveryForecast + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—';
   const firstItem = request.items[0];
   const isAwaitingApproval = request.status === 'Em Aprovação' && !request.approvedBy;
   const openObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
