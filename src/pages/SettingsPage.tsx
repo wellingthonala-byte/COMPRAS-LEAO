@@ -2,18 +2,18 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Building2, Palette, Users, ShieldCheck, GitBranch, ShoppingCart, Truck, Bell,
   Plug, Lock, DatabaseBackup, SlidersHorizontal, ScrollText, KeyRound, Database,
-  Search, Star, ChevronRight, Plus, Trash2, Pencil, X, Check, AlertTriangle,
-  Download, Upload, RotateCcw, Eye, EyeOff, CheckCircle2, CircleOff, Clock, PiggyBank,
+  Search, Star, ChevronRight, Plus, Trash2, X, AlertTriangle,
+  Download, Upload, CheckCircle2, Clock, PiggyBank,
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { colorFromInitials } from '../utils/colors';
 import { PurchaseRequest } from '../types';
-import { AppUser, Role, loadUsers, saveUsers } from '../data/users';
+import { AppUser, Role, loadUsers } from '../data/users';
 import { PAYMENT_TERMS_PRESETS } from '../lib/paymentTerms';
 import { nationalHolidays } from '../lib/finance';
 import {
   fetchAppSettings, saveAppSettings, fetchRolePermissions, saveRolePermission,
-  buildPermissionMap, isModuleAllowed, dbRolesFor,
+  buildPermissionMap, isModuleAllowed, dbRolesFor, fetchRealUsers, RealUser,
 } from '../lib/settingsBackend';
 
 /* ================================================================== */
@@ -270,9 +270,23 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'error'>('saved');
   const [saveError, setSaveError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [users, setUsers] = useState<AppUser[]>(loadUsers);
+  const [users] = useState<AppUser[]>(loadUsers);
   const [rolePerms, setRolePerms] = useState<Map<string, boolean>>(new Map());
+  const [realUsers, setRealUsers] = useState<RealUser[]>([]);
+  const [realUsersLoading, setRealUsersLoading] = useState(true);
+  const [realUsersError, setRealUsersError] = useState<string | null>(null);
   const justLoaded = useRef(false);
+
+  const loadRealUsers = () => {
+    setRealUsersLoading(true);
+    setRealUsersError(null);
+    fetchRealUsers()
+      .then(setRealUsers)
+      .catch((e) => setRealUsersError(e instanceof Error ? e.message : 'Falha ao carregar usuários'))
+      .finally(() => setRealUsersLoading(false));
+  };
+
+  useEffect(() => { loadRealUsers(); }, []);
 
   // Carrega as configurações reais do Supabase (o cache local só serve para
   // pintar a tela na hora enquanto isso acontece).
@@ -369,8 +383,6 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
 
   const activeSection = SECTIONS.find((s) => s.key === active)!;
   const blocked = !!activeSection.critical && !isModuleAllowed(rolePerms, currentUser.role, activeSection.key);
-
-  const persistUsers = (next: AppUser[]) => { setUsers(next); saveUsers(next); };
 
   if (loading) {
     return (
@@ -480,7 +492,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
               <>
                 {active === 'geral' && <GeneralSection settings={settings} patch={patch} />}
                 {active === 'identidade' && <BrandingSection settings={settings} patch={patch} />}
-                {active === 'usuarios' && <UsersSection users={users} persist={persistUsers} currentUser={currentUser} showToast={showToast} />}
+                {active === 'usuarios' && <UsersSection users={realUsers} loading={realUsersLoading} error={realUsersError} onRetry={loadRealUsers} currentUserId={currentUser.id} />}
                 {active === 'perfis' && <ProfilesSection rolePerms={rolePerms} setRolePerms={setRolePerms} showToast={showToast} currentUserRole={currentUser.role} />}
                 {active === 'aprovacao' && <ApprovalSection settings={settings} patch={patch} />}
                 {active === 'compras' && <PurchasingSection settings={settings} patch={patch} />}
@@ -627,215 +639,68 @@ function BrandingSection({ settings, patch }: { settings: AppSettings; patch: Pa
   );
 }
 
-function UsersSection({ users, persist, currentUser, showToast }: {
-  users: AppUser[]; persist: (u: AppUser[]) => void; currentUser: AppUser; showToast: (m: string) => void;
+const DB_ROLE_LABEL: Record<string, string> = {
+  admin: 'Administrador', gestor: 'Gestor', compras: 'Comprador', financeiro: 'Financeiro', solicitante: 'Solicitante',
+};
+const DB_ROLE_BADGE: Record<string, string> = {
+  admin: 'bg-emerald-100 text-emerald-700', gestor: 'bg-emerald-100 text-emerald-700',
+  compras: 'bg-violet-100 text-violet-700', financeiro: 'bg-teal-100 text-teal-700', solicitante: 'bg-slate-100 text-slate-600',
+};
+
+function UsersSection({ users, loading, error, onRetry, currentUserId }: {
+  users: RealUser[]; loading: boolean; error: string | null; onRetry: () => void; currentUserId: string;
 }) {
-  const [editing, setEditing] = useState<AppUser | null>(null);
-  const [isNew, setIsNew] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState<AppUser | null>(null);
-  const [showPwd, setShowPwd] = useState(false);
-  const [formError, setFormError] = useState('');
-
-  const roleLabel: Record<Role, string> = { gestor: 'Gestor', comprador: 'Comprador', financeiro: 'Financeiro', solicitante: 'Solicitante' };
-
-  const startNew = () => {
-    setIsNew(true);
-    setFormError('');
-    setEditing({ id: `u-${Date.now()}`, name: '', email: '', password: '', role: 'solicitante', initials: '', active: true });
-  };
-
-  const save = () => {
-    if (!editing) return;
-    const name = editing.name.trim();
-    if (!name || !editing.password.trim()) {
-      setFormError('Nome e senha são obrigatórios.');
-      return;
-    }
-    if (editing.password.trim().length < 4) {
-      setFormError('A senha deve ter pelo menos 4 caracteres.');
-      return;
-    }
-    const duplicate = users.some((u) => u.id !== editing.id && u.name.trim().toLowerCase() === name.toLowerCase());
-    if (duplicate) {
-      setFormError(`Já existe um usuário chamado "${name}" — o login é feito pelo nome, então ele precisa ser único.`);
-      return;
-    }
-    if (editing.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editing.email)) {
-      setFormError('E-mail inválido.');
-      return;
-    }
-    // Não permitir remover o último gestor ativo (trava de segurança do fluxo de aprovação)
-    if (!isNew) {
-      const original = users.find((u) => u.id === editing.id);
-      const otherActiveGestor = users.some((u) => u.id !== editing.id && u.role === 'gestor' && u.active !== false);
-      if (original?.role === 'gestor' && (editing.role !== 'gestor' || editing.active === false) && !otherActiveGestor) {
-        setFormError('Este é o único gestor ativo — cadastre outro gestor antes de alterar o cargo ou desativá-lo.');
-        return;
-      }
-    }
-    const initials = name.slice(0, 2).toUpperCase();
-    const final = { ...editing, name, email: editing.email?.trim() || undefined, initials };
-    persist(isNew ? [...users, final] : users.map((u) => (u.id === final.id ? final : u)));
-    showToast(isNew ? 'Usuário criado com sucesso' : 'Usuário atualizado');
-    setEditing(null); setIsNew(false); setFormError('');
-  };
-
   return (
     <div className="space-y-4">
-      <Card title="Usuários do Sistema" subtitle="Estes usuários acessam o login do sistema — as alterações valem imediatamente">
-        <div className="flex justify-end mb-3">
-          <button onClick={startNew}
-            className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 text-white px-3 py-2 rounded-lg text-xs font-medium">
-            <Plus size={13} /> Criar Usuário
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                {['Nome', 'Cargo', 'E-mail', 'Último acesso', 'Status', 'Ações'].map((h) => (
-                  <th key={h} scope="col" className="px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/70">
-                  <td className="px-3 py-2.5">
-                    <span className="flex items-center gap-2">
-                      <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
-                        style={{ backgroundColor: colorFromInitials(u.initials) }}>{u.initials}</span>
-                      <span className="text-sm font-medium text-slate-700">{u.name}{u.id === currentUser.id && <span className="text-[10px] text-violet-500 ml-1">(você)</span>}</span>
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${
-                      u.role === 'gestor' ? 'bg-emerald-100 text-emerald-700' : u.role === 'comprador' ? 'bg-violet-100 text-violet-700' : u.role === 'financeiro' ? 'bg-teal-100 text-teal-700' : 'bg-slate-100 text-slate-600'
-                    }`}>{roleLabel[u.role]}</span>
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500">{u.email || '—'}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500">{u.lastLogin ? new Date(u.lastLogin).toLocaleString('pt-BR') : 'Nunca acessou'}</td>
-                  <td className="px-3 py-2.5">
-                    {u.active !== false ? (
-                      <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium"><CheckCircle2 size={12} /> Ativo</span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[11px] text-slate-400 font-medium"><CircleOff size={12} /> Inativo</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => { setIsNew(false); setFormError(''); setEditing(u); }} title="Editar" aria-label={`Editar ${u.name}`}
-                        className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Pencil size={13} /></button>
-                      <button
-                        onClick={() => {
-                          if (u.id === currentUser.id) { showToast('Você não pode desativar a si mesmo'); return; }
-                          if (u.role === 'gestor' && u.active !== false && !users.some((x) => x.id !== u.id && x.role === 'gestor' && x.active !== false)) {
-                            showToast('Não é possível desativar o único gestor ativo');
-                            return;
-                          }
-                          persist(users.map((x) => x.id === u.id ? { ...x, active: x.active === false } : x));
-                          showToast(u.active !== false ? 'Usuário desativado' : 'Usuário ativado');
-                        }}
-                        title={u.active !== false ? 'Desativar' : 'Ativar'} aria-label={`${u.active !== false ? 'Desativar' : 'Ativar'} ${u.name}`}
-                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg">
-                        {u.active !== false ? <CircleOff size={13} /> : <CheckCircle2 size={13} />}
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (u.id === currentUser.id) { showToast('Você não pode excluir a si mesmo'); return; }
-                          if (u.role === 'gestor' && u.active !== false && !users.some((x) => x.id !== u.id && x.role === 'gestor' && x.active !== false)) {
-                            showToast('Não é possível excluir o único gestor ativo');
-                            return;
-                          }
-                          setConfirmDelete(u);
-                        }}
-                        title="Excluir" aria-label={`Excluir ${u.name}`}
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 size={13} /></button>
-                    </div>
-                  </td>
+      <Card title="Usuários do Sistema" subtitle="Lista real do Supabase Auth. Criar, editar cargo, desativar ou excluir usuários é feito direto no painel do Supabase (Authentication → Users).">
+        {loading ? (
+          <p className="text-xs text-slate-400 text-center py-8">Carregando usuários...</p>
+        ) : error ? (
+          <div className="flex flex-col items-center gap-2 py-8">
+            <AlertTriangle size={20} className="text-red-500" />
+            <p className="text-xs text-red-600 text-center max-w-sm">{error}</p>
+            <button onClick={onRetry} className="text-xs text-violet-600 hover:text-violet-800 font-medium underline">Tentar novamente</button>
+          </div>
+        ) : users.length === 0 ? (
+          <p className="text-xs text-slate-400 text-center py-8">Nenhum usuário encontrado.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  {['Nome', 'Cargo(s)', 'Setor'].map((h) => (
+                    <th key={h} scope="col" className="px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {users.map((u) => (
+                  <tr key={u.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/70">
+                    <td className="px-3 py-2.5">
+                      <span className="flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white"
+                          style={{ backgroundColor: colorFromInitials(u.name.slice(0, 2).toUpperCase()) }}>{u.name.slice(0, 2).toUpperCase()}</span>
+                        <span className="text-sm font-medium text-slate-700">{u.name}{u.id === currentUserId && <span className="text-[10px] text-violet-500 ml-1">(você)</span>}</span>
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {u.roles.map((r) => (
+                          <span key={r} className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${DB_ROLE_BADGE[r] ?? 'bg-slate-100 text-slate-600'}`}>
+                            {DB_ROLE_LABEL[r] ?? r}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-slate-500">{u.sector || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
-
-      {/* Modal de edição/criação */}
-      {editing && (
-        <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4" onClick={() => setEditing(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-slate-800">{isNew ? 'Criar Usuário' : `Editar ${editing.name}`}</h3>
-              <button onClick={() => setEditing(null)} aria-label="Fechar" className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
-            </div>
-            <div className="space-y-3">
-              <Field label="Nome (usado no login)" value={editing.name} onChange={(v) => setEditing({ ...editing, name: v })} />
-              <Field label="E-mail" value={editing.email ?? ''} onChange={(v) => setEditing({ ...editing, email: v })} type="email" />
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Senha</label>
-                <div className="relative">
-                  <input type={showPwd ? 'text' : 'password'} value={editing.password}
-                    onChange={(e) => setEditing({ ...editing, password: e.target.value })}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
-                  <button onClick={() => setShowPwd((v) => !v)} aria-label="Mostrar senha"
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
-                    {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
-                  </button>
-                </div>
-                {!isNew && (
-                  <button onClick={() => setEditing({ ...editing, password: '1221' })}
-                    className="text-[11px] text-violet-600 hover:text-violet-800 mt-1 flex items-center gap-1">
-                    <RotateCcw size={10} /> Resetar senha para padrão (1221)
-                  </button>
-                )}
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Cargo / Perfil</label>
-                <select value={editing.role} onChange={(e) => setEditing({ ...editing, role: e.target.value as Role })}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
-                  <option value="gestor">Gestor — aprova solicitações e valores</option>
-                  <option value="comprador">Comprador — movimenta o fluxo e cancela</option>
-                  <option value="financeiro">Financeiro — vê a projeção de parcelas</option>
-                  <option value="solicitante">Solicitante — cria solicitações</option>
-                </select>
-              </div>
-              <Toggle label="Usuário ativo" checked={editing.active !== false} onChange={(v) => setEditing({ ...editing, active: v })} />
-            </div>
-            {formError && (
-              <div className="mt-3 flex items-start gap-2 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                <AlertTriangle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-red-700">{formError}</p>
-              </div>
-            )}
-            <div className="flex justify-end gap-2 mt-5">
-              <button onClick={() => setEditing(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
-              <button onClick={save} disabled={!editing.name.trim() || !editing.password.trim()}
-                className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-4 py-2 rounded-lg text-sm font-medium">
-                <Check size={14} /> Salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Confirmação de exclusão */}
-      {confirmDelete && (
-        <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4" onClick={() => setConfirmDelete(null)}>
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 text-center" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true">
-            <AlertTriangle size={26} className="text-red-500 mx-auto mb-2" />
-            <h3 className="font-semibold text-slate-800 mb-1">Excluir {confirmDelete.name}?</h3>
-            <p className="text-sm text-slate-500 mb-4">Esta ação é permanente e o usuário perderá o acesso ao sistema.</p>
-            <div className="flex justify-center gap-2">
-              <button onClick={() => setConfirmDelete(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
-              <button onClick={() => {
-                persist(users.filter((x) => x.id !== confirmDelete.id));
-                showToast('Usuário excluído');
-                setConfirmDelete(null);
-              }} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium">Excluir</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <PendingBanner text="E-mail e último acesso não aparecem aqui porque exigem a Admin API do Supabase (chave service_role), que não pode ficar no navegador. Consulte esses dados no painel do Supabase." />
     </div>
   );
 }

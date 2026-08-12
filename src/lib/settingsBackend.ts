@@ -55,6 +55,40 @@ export async function saveRolePermission(role: string, module: string, allowed: 
   if (error) throw error;
 }
 
+/* ================================================================== */
+/* Usuários reais (Supabase Auth) — só leitura.                         */
+/* Criar/editar/desativar é feito direto no painel do Supabase: alterar */
+/* login exige a Admin API (chave service_role), que não fica no front. */
+/* ================================================================== */
+export interface RealUser {
+  id: string;
+  name: string;
+  sector: string | null;
+  roles: string[];
+}
+
+export async function fetchRealUsers(): Promise<RealUser[]> {
+  const sb = getSupabase();
+  const [{ data: profiles, error: pErr }, { data: roles, error: rErr }] = await withTimeout(Promise.all([
+    sb.from('profiles').select('id, full_name, sector'),
+    sb.from('user_roles').select('user_id, role'),
+  ]));
+  if (pErr) throw pErr;
+  if (rErr) throw rErr;
+  const roleMap = new Map<string, string[]>();
+  (roles ?? []).forEach((r: { user_id: string; role: string }) => {
+    roleMap.set(r.user_id, [...(roleMap.get(r.user_id) ?? []), r.role]);
+  });
+  return (profiles ?? [])
+    .map((p: { id: string; full_name: string; sector: string | null }) => ({
+      id: p.id,
+      name: p.full_name,
+      sector: p.sector,
+      roles: roleMap.get(p.id) ?? ['solicitante'],
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Papéis do banco (public.app_role) que correspondem a um papel do front. */
 export function dbRolesFor(role: Role): string[] {
   switch (role) {
