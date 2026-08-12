@@ -56,6 +56,30 @@ export async function saveRolePermission(role: string, module: string, allowed: 
 }
 
 /* ================================================================== */
+/* Logo da empresa — Supabase Storage (bucket "branding", público)      */
+/* ================================================================== */
+const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
+const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
+
+export async function uploadLogo(file: File): Promise<string> {
+  if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
+    throw new Error('Formato não suportado — envie PNG, JPG, SVG ou WEBP.');
+  }
+  if (file.size > LOGO_MAX_BYTES) {
+    throw new Error('Arquivo maior que 2 MB.');
+  }
+  const sb = getSupabase();
+  const ext = file.name.split('.').pop() || 'png';
+  const path = `logo-${Date.now()}.${ext}`;
+  const { error } = await withTimeout(
+    sb.storage.from('branding').upload(path, file, { upsert: true, cacheControl: '3600' })
+  );
+  if (error) throw error;
+  const { data } = sb.storage.from('branding').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/* ================================================================== */
 /* Usuários reais (Supabase Auth) — só leitura.                         */
 /* Criar/editar/desativar é feito direto no painel do Supabase: alterar */
 /* login exige a Admin API (chave service_role), que não fica no front. */

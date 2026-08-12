@@ -13,7 +13,7 @@ import { PAYMENT_TERMS_PRESETS } from '../lib/paymentTerms';
 import { nationalHolidays } from '../lib/finance';
 import {
   fetchAppSettings, saveAppSettings, fetchRolePermissions, saveRolePermission,
-  buildPermissionMap, isModuleAllowed, dbRolesFor, fetchRealUsers, RealUser,
+  buildPermissionMap, isModuleAllowed, dbRolesFor, fetchRealUsers, RealUser, uploadLogo,
 } from '../lib/settingsBackend';
 
 /* ================================================================== */
@@ -23,7 +23,7 @@ export interface AppSettings {
   company: {
     nome: string; razaoSocial: string; fantasia: string; cnpj: string; ie: string;
     endereco: string; cidade: string; estado: string; cep: string; pais: string;
-    telefone: string; whatsapp: string; email: string; website: string;
+    telefone: string; whatsapp: string; email: string; website: string; logoUrl: string;
   };
   branding: { primaryColor: string; secondaryColor: string; theme: 'claro' | 'escuro'; font: string };
   approval: {
@@ -82,7 +82,7 @@ const DB_ROLES: { key: string; label: string }[] = [
 ];
 
 const DEFAULT_SETTINGS: AppSettings = {
-  company: { nome: 'Compras Leão', razaoSocial: '', fantasia: '', cnpj: '', ie: '', endereco: '', cidade: '', estado: '', cep: '', pais: 'Brasil', telefone: '', whatsapp: '', email: '', website: '' },
+  company: { nome: 'Compras Leão', razaoSocial: '', fantasia: '', cnpj: '', ie: '', endereco: '', cidade: '', estado: '', cep: '', pais: 'Brasil', telefone: '', whatsapp: '', email: '', website: '', logoUrl: '' },
   branding: { primaryColor: '#7c3aed', secondaryColor: '#0f172a', theme: 'claro', font: 'Inter' },
   approval: { niveis: 1, aprovacaoPorValor: false, valorAlcada: '', aprovacaoPorSetor: false, autoAprovarAbaixo: '', aprovacaoObrigatoria: true },
   purchasing: { numeracaoAutomatica: true, prefixo: '#', slaHorasMaquinaParada: '4', slaHorasUrgente: '24', prioridadePadrao: 'Não Urgente', categorias: ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'], centrosCusto: ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'], tiposSolicitacao: ['Material', 'Serviço'] },
@@ -490,7 +490,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
 
             {blocked ? <NoPermission /> : (
               <>
-                {active === 'geral' && <GeneralSection settings={settings} patch={patch} />}
+                {active === 'geral' && <GeneralSection settings={settings} patch={patch} showToast={showToast} />}
                 {active === 'identidade' && <BrandingSection settings={settings} patch={patch} />}
                 {active === 'usuarios' && <UsersSection users={realUsers} loading={realUsersLoading} error={realUsersError} onRetry={loadRealUsers} currentUserId={currentUser.id} />}
                 {active === 'perfis' && <ProfilesSection rolePerms={rolePerms} setRolePerms={setRolePerms} showToast={showToast} currentUserRole={currentUser.role} />}
@@ -520,9 +520,25 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
 /* ================================================================== */
 type PatchFn = <K extends keyof AppSettings>(key: K, value: Partial<AppSettings[K]>) => void;
 
-function GeneralSection({ settings, patch }: { settings: AppSettings; patch: PatchFn }) {
+function GeneralSection({ settings, patch, showToast }: { settings: AppSettings; patch: PatchFn; showToast: (m: string) => void }) {
   const c = settings.company;
   const set = (field: keyof AppSettings['company']) => (v: string) => patch('company', { [field]: v });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      const url = await uploadLogo(file);
+      patch('company', { logoUrl: url });
+      showToast('Logo enviada com sucesso');
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Falha ao enviar a logo');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <Card title="Dados da Empresa" subtitle="Informações cadastrais utilizadas em documentos e relatórios">
@@ -551,8 +567,33 @@ function GeneralSection({ settings, patch }: { settings: AppSettings; patch: Pat
           <Field label="Website" value={c.website} onChange={set('website')} placeholder="https://" />
         </div>
       </Card>
-      <Card title="Logo e Favicon">
-        <PendingBanner text="Upload de arquivos requer o backend (armazenamento). A estrutura já está pronta — os campos serão habilitados na integração." />
+      <Card title="Logo" subtitle="PNG, JPG, SVG ou WEBP — até 2 MB">
+        <div className="flex items-center gap-4">
+          <div className="w-20 h-20 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center overflow-hidden flex-shrink-0">
+            {c.logoUrl ? (
+              <img src={c.logoUrl} alt="Logo da empresa" className="w-full h-full object-contain" />
+            ) : (
+              <Building2 size={24} className="text-slate-300" />
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="flex gap-2">
+              <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white px-3 py-2 rounded-lg text-xs font-medium">
+                <Upload size={13} /> {uploading ? 'Enviando...' : c.logoUrl ? 'Trocar logo' : 'Enviar logo'}
+              </button>
+              {c.logoUrl && (
+                <button onClick={() => patch('company', { logoUrl: '' })}
+                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-red-600 border border-slate-200 hover:border-red-300 px-3 py-2 rounded-lg font-medium">
+                  <Trash2 size={13} /> Remover
+                </button>
+              )}
+            </div>
+            <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden"
+              aria-label="Selecionar arquivo de logo"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
+          </div>
+        </div>
       </Card>
     </div>
   );
