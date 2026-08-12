@@ -11,6 +11,10 @@ import { PurchaseRequest } from '../types';
 import { AppUser, Role, loadUsers, saveUsers } from '../data/users';
 import { PAYMENT_TERMS_PRESETS } from '../lib/paymentTerms';
 import { nationalHolidays } from '../lib/finance';
+import {
+  fetchAppSettings, saveAppSettings, fetchRolePermissions, saveRolePermission,
+  buildPermissionMap, isModuleAllowed, dbRolesFor,
+} from '../lib/settingsBackend';
 
 /* ================================================================== */
 /* Modelo de configurações (estrutura pronta para o banco de dados)    */
@@ -48,32 +52,34 @@ export interface AppSettings {
     nomeSistema: string; rodape: string; idioma: string; fuso: string;
     formatoData: string; formatoMoeda: string;
   };
-  profiles: Record<string, Record<string, boolean>>;
   apiKeys: { id: string; label: string; key: string; createdAt: string }[];
   backups: { id: string; date: string; size: number }[];
   autoBackup: boolean;
 }
 
-const SETTINGS_KEY = 'compras-leao-settings';
+/** Cache local — só usado para pintar a tela instantaneamente e como fallback
+ *  se o Supabase estiver fora do ar. A fonte de verdade é a tabela app_settings. */
+const SETTINGS_CACHE_KEY = 'compras-leao-settings';
 
-const PROFILE_NAMES = ['Administrador', 'Diretor', 'Gestor', 'Comprador', 'Almoxarifado', 'Financeiro', 'Auditor', 'Solicitante'];
-const MODULES = ['Dashboard', 'Kanban', 'Ordens de Serviço', 'Relatórios', 'Configurações', 'Usuários', 'Solicitações', 'Compras', 'Fornecedores'];
+/** Módulos protegidos por cadeado — chaves iguais às de SECTIONS (critical: true). */
+const CRITICAL_MODULES: { key: string; label: string }[] = [
+  { key: 'usuarios', label: 'Usuários' },
+  { key: 'perfis', label: 'Perfis e Permissões' },
+  { key: 'seguranca', label: 'Segurança' },
+  { key: 'backup', label: 'Backup' },
+  { key: 'auditoria', label: 'Auditoria' },
+  { key: 'api', label: 'API' },
+  { key: 'banco', label: 'Banco de Dados' },
+];
 
-function defaultProfiles(): Record<string, Record<string, boolean>> {
-  const p: Record<string, Record<string, boolean>> = {};
-  PROFILE_NAMES.forEach((name) => {
-    p[name] = {};
-    MODULES.forEach((m) => {
-      p[name][m] =
-        name === 'Administrador' ? true :
-        name === 'Solicitante' ? ['Dashboard', 'Kanban', 'Solicitações'].includes(m) :
-        name === 'Comprador' ? !['Configurações', 'Usuários'].includes(m) :
-        name === 'Gestor' || name === 'Diretor' ? m !== 'Configurações' :
-        ['Dashboard', 'Kanban', 'Relatórios'].includes(m);
-    });
-  });
-  return p;
-}
+/** Papéis reais do banco (public.app_role) para a matriz de permissões. */
+const DB_ROLES: { key: string; label: string }[] = [
+  { key: 'admin', label: 'Administrador' },
+  { key: 'gestor', label: 'Gestor' },
+  { key: 'compras', label: 'Comprador' },
+  { key: 'financeiro', label: 'Financeiro' },
+  { key: 'solicitante', label: 'Solicitante' },
+];
 
 const DEFAULT_SETTINGS: AppSettings = {
   company: { nome: 'Compras Leão', razaoSocial: '', fantasia: '', cnpj: '', ie: '', endereco: '', cidade: '', estado: '', cep: '', pais: 'Brasil', telefone: '', whatsapp: '', email: '', website: '' },
@@ -85,30 +91,31 @@ const DEFAULT_SETTINGS: AppSettings = {
   notifications: { pushEnabled: true, ntfyTopic: 'clleao9274', emailEnabled: false, whatsappEnabled: false, evAprovacao: true, evReprovacao: true, evCompras: true, evRecebimento: true, evNovas: true },
   security: { mfa: false, sessaoMinutos: '480', ipPermitido: '', sso: false },
   customization: { nomeSistema: 'Compras Leão', rodape: '', idioma: 'Português (Brasil)', fuso: 'America/Sao_Paulo', formatoData: 'DD/MM/AAAA', formatoMoeda: 'R$ 1.234,56' },
-  profiles: defaultProfiles(),
   apiKeys: [],
   backups: [],
   autoBackup: false,
 };
 
-function loadSettings(): AppSettings {
+function mergeDefaults(parsed: Record<string, unknown> | null | undefined): AppSettings {
+  const p = (parsed ?? {}) as Partial<AppSettings>;
+  return {
+    ...DEFAULT_SETTINGS, ...p,
+    company: { ...DEFAULT_SETTINGS.company, ...p.company },
+    branding: { ...DEFAULT_SETTINGS.branding, ...p.branding },
+    approval: { ...DEFAULT_SETTINGS.approval, ...p.approval },
+    purchasing: { ...DEFAULT_SETTINGS.purchasing, ...p.purchasing },
+    suppliers: { ...DEFAULT_SETTINGS.suppliers, ...p.suppliers },
+    finance: { ...DEFAULT_SETTINGS.finance, ...p.finance },
+    notifications: { ...DEFAULT_SETTINGS.notifications, ...p.notifications },
+    security: { ...DEFAULT_SETTINGS.security, ...p.security },
+    customization: { ...DEFAULT_SETTINGS.customization, ...p.customization },
+  };
+}
+
+function loadCachedSettings(): AppSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return {
-        ...DEFAULT_SETTINGS, ...parsed,
-        company: { ...DEFAULT_SETTINGS.company, ...parsed.company },
-        branding: { ...DEFAULT_SETTINGS.branding, ...parsed.branding },
-        approval: { ...DEFAULT_SETTINGS.approval, ...parsed.approval },
-        purchasing: { ...DEFAULT_SETTINGS.purchasing, ...parsed.purchasing },
-        suppliers: { ...DEFAULT_SETTINGS.suppliers, ...parsed.suppliers },
-        notifications: { ...DEFAULT_SETTINGS.notifications, ...parsed.notifications },
-        security: { ...DEFAULT_SETTINGS.security, ...parsed.security },
-        customization: { ...DEFAULT_SETTINGS.customization, ...parsed.customization },
-        profiles: parsed.profiles ?? defaultProfiles(),
-      };
-    }
+    const raw = localStorage.getItem(SETTINGS_CACHE_KEY);
+    if (raw) return mergeDefaults(JSON.parse(raw));
   } catch { /* volta ao padrão */ }
   return DEFAULT_SETTINGS;
 }
@@ -236,7 +243,7 @@ function NoPermission() {
     <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
       <Lock size={28} className="text-slate-300 mx-auto mb-3" />
       <h3 className="font-semibold text-slate-700 mb-1">Acesso restrito</h3>
-      <p className="text-sm text-slate-400">Apenas usuários com perfil de <strong>Gestor (administrador)</strong> podem acessar esta configuração.</p>
+      <p className="text-sm text-slate-400">Seu perfil não tem permissão para acessar esta configuração. Um gestor pode liberar em <strong>Perfis e Permissões</strong>.</p>
     </div>
   );
 }
@@ -250,36 +257,92 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
-  const isAdmin = currentUser.role === 'gestor';
-  const [loading, setLoading] = useState(true);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [permsLoading, setPermsLoading] = useState(true);
+  const loading = settingsLoading || permsLoading;
   const [active, setActive] = useState<SectionKey>('geral');
   const [search, setSearch] = useState('');
   const [favorites, setFavorites] = useState<SectionKey[]>(() => {
     try { return JSON.parse(localStorage.getItem('compras-leao-fav-settings') ?? '[]'); } catch { return []; }
   });
   const [recents, setRecents] = useState<SectionKey[]>([]);
-  const [settings, setSettings] = useState<AppSettings>(loadSettings);
-  const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving'>('saved');
+  const [settings, setSettings] = useState<AppSettings>(loadCachedSettings);
+  const [saveState, setSaveState] = useState<'saved' | 'dirty' | 'saving' | 'error'>('saved');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [users, setUsers] = useState<AppUser[]>(loadUsers);
-  const firstRender = useRef(true);
+  const [rolePerms, setRolePerms] = useState<Map<string, boolean>>(new Map());
+  const justLoaded = useRef(false);
 
+  // Carrega as configurações reais do Supabase (o cache local só serve para
+  // pintar a tela na hora enquanto isso acontece).
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 350);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    (async () => {
+      try {
+        const remote = await fetchAppSettings();
+        if (cancelled) return;
+        if (remote === null) {
+          // Nada salvo ainda no banco — migra o cache local (se existir) uma única vez.
+          const cachedRaw = localStorage.getItem(SETTINGS_CACHE_KEY);
+          const merged = cachedRaw ? mergeDefaults(JSON.parse(cachedRaw)) : DEFAULT_SETTINGS;
+          await saveAppSettings(merged as unknown as Record<string, unknown>, currentUser.id).catch(() => {});
+          justLoaded.current = true;
+          setSettings(merged);
+        } else {
+          const merged = mergeDefaults(remote);
+          justLoaded.current = true;
+          setSettings(merged);
+          localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(merged));
+        }
+      } catch {
+        // Offline — segue com o que já estava no cache local.
+      } finally {
+        if (!cancelled) setSettingsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Salvamento automático com debounce
+  // Carrega a matriz de permissões (Perfis e Permissões) — controla os cadeados.
   useEffect(() => {
-    if (firstRender.current) { firstRender.current = false; return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const rows = await fetchRolePermissions();
+        if (!cancelled) setRolePerms(buildPermissionMap(rows));
+      } catch {
+        // Falhou: abas críticas continuam bloqueadas por segurança.
+      } finally {
+        if (!cancelled) setPermsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const saveNow = async (data: AppSettings) => {
+    setSaveState('saving');
+    setSaveError(null);
+    try {
+      await saveAppSettings(data as unknown as Record<string, unknown>, currentUser.id);
+      localStorage.setItem(SETTINGS_CACHE_KEY, JSON.stringify(data));
+      setSaveState('saved');
+    } catch (e) {
+      setSaveState('error');
+      setSaveError(e instanceof Error ? e.message : 'Falha ao salvar');
+    }
+  };
+
+  // Salvamento automático com debounce (Supabase é a fonte de verdade)
+  useEffect(() => {
+    if (settingsLoading) return;
+    if (justLoaded.current) { justLoaded.current = false; return; }
     setSaveState('dirty');
-    const t = setTimeout(() => {
-      setSaveState('saving');
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-      setTimeout(() => setSaveState('saved'), 300);
-    }, 700);
+    const t = setTimeout(() => { saveNow(settings); }, 700);
     return () => clearTimeout(t);
-  }, [settings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, settingsLoading]);
 
   useEffect(() => {
     localStorage.setItem('compras-leao-fav-settings', JSON.stringify(favorites));
@@ -305,7 +368,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   }, [search, favorites]);
 
   const activeSection = SECTIONS.find((s) => s.key === active)!;
-  const blocked = activeSection.critical && !isAdmin;
+  const blocked = !!activeSection.critical && !isModuleAllowed(rolePerms, currentUser.role, activeSection.key);
 
   const persistUsers = (next: AppUser[]) => { setUsers(next); saveUsers(next); };
 
@@ -399,10 +462,16 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
                 <span className="font-semibold text-slate-700">{activeSection.label}</span>
               </div>
               <span className={`flex items-center gap-1.5 text-xs font-medium ${
-                saveState === 'saved' ? 'text-emerald-600' : saveState === 'saving' ? 'text-slate-400' : 'text-amber-600'
+                saveState === 'saved' ? 'text-emerald-600' : saveState === 'saving' ? 'text-slate-400' : saveState === 'error' ? 'text-red-600' : 'text-amber-600'
               }`}>
                 {saveState === 'saved' ? <><CheckCircle2 size={13} /> Tudo salvo</> :
                  saveState === 'saving' ? <><Clock size={13} /> Salvando...</> :
+                 saveState === 'error' ? (
+                   <>
+                     <AlertTriangle size={13} /> Erro ao salvar{saveError ? ` — ${saveError}` : ''}
+                     <button onClick={() => saveNow(settings)} className="underline hover:text-red-800 font-semibold ml-1">Tentar novamente</button>
+                   </>
+                 ) :
                  <><AlertTriangle size={13} /> Alterações não salvas</>}
               </span>
             </div>
@@ -412,7 +481,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
                 {active === 'geral' && <GeneralSection settings={settings} patch={patch} />}
                 {active === 'identidade' && <BrandingSection settings={settings} patch={patch} />}
                 {active === 'usuarios' && <UsersSection users={users} persist={persistUsers} currentUser={currentUser} showToast={showToast} />}
-                {active === 'perfis' && <ProfilesSection settings={settings} setSettings={setSettings} />}
+                {active === 'perfis' && <ProfilesSection rolePerms={rolePerms} setRolePerms={setRolePerms} showToast={showToast} currentUserRole={currentUser.role} />}
                 {active === 'aprovacao' && <ApprovalSection settings={settings} patch={patch} />}
                 {active === 'compras' && <PurchasingSection settings={settings} patch={patch} />}
                 {active === 'fornecedores' && <SuppliersSection settings={settings} patch={patch} />}
@@ -771,45 +840,78 @@ function UsersSection({ users, persist, currentUser, showToast }: {
   );
 }
 
-function ProfilesSection({ settings, setSettings }: { settings: AppSettings; setSettings: React.Dispatch<React.SetStateAction<AppSettings>> }) {
-  const toggle = (profile: string, module: string) =>
-    setSettings((s) => ({
-      ...s,
-      profiles: { ...s.profiles, [profile]: { ...s.profiles[profile], [module]: !s.profiles[profile]?.[module] } },
-    }));
+function ProfilesSection({ rolePerms, setRolePerms, showToast, currentUserRole }: {
+  rolePerms: Map<string, boolean>;
+  setRolePerms: React.Dispatch<React.SetStateAction<Map<string, boolean>>>;
+  showToast: (m: string) => void;
+  currentUserRole: Role;
+}) {
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const toggle = async (role: string, module: string) => {
+    const cellKey = `${role}:${module}`;
+    const next = !(rolePerms.get(cellKey) ?? false);
+    // "admin" e "gestor" são tratados como o mesmo bloco no restante do sistema
+    // (o front colapsa admin em gestor no login) — mantém os dois sincronizados
+    // para não criar uma regra que parece aplicada mas não é.
+    const affected = role === 'admin' || role === 'gestor' ? ['admin', 'gestor'] : [role];
+    setSaving(cellKey);
+    try {
+      await Promise.all(affected.map((r) => saveRolePermission(r, module, next)));
+      setRolePerms((prev) => {
+        const copy = new Map(prev);
+        affected.forEach((r) => copy.set(`${r}:${module}`, next));
+        return copy;
+      });
+    } catch (e) {
+      showToast(`Erro ao salvar permissão: ${e instanceof Error ? e.message : 'tente novamente'}`);
+    } finally {
+      setSaving(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
-      <PendingBanner text="Hoje o login usa 3 perfis ativos (Gestor, Comprador, Solicitante). Os demais perfis e esta matriz de permissões já ficam salvos e serão aplicados na integração com o backend." />
-      <Card title="Matriz de Permissões por Módulo" subtitle="Marque quais módulos cada perfil pode acessar">
+      <Card title="Matriz de Permissões — Abas com Cadeado" subtitle="Controla quem acessa cada aba protegida de Configurações. A regra é aplicada de verdade: bloqueada aqui, bloqueada no banco (RLS) também.">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th scope="col" className="px-3 py-2.5 text-xs font-semibold text-slate-500">Perfil</th>
-                {MODULES.map((m) => (
-                  <th key={m} scope="col" className="px-2 py-2.5 text-[10px] font-semibold text-slate-500 text-center whitespace-nowrap">{m}</th>
+                <th scope="col" className="px-3 py-2.5 text-xs font-semibold text-slate-500">Papel</th>
+                {CRITICAL_MODULES.map((m) => (
+                  <th key={m.key} scope="col" className="px-2 py-2.5 text-[10px] font-semibold text-slate-500 text-center whitespace-nowrap">{m.label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {PROFILE_NAMES.map((p) => (
-                <tr key={p} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/70">
+              {DB_ROLES.map((r) => (
+                <tr key={r.key} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/70">
                   <td className="px-3 py-2 text-xs font-semibold text-slate-700 whitespace-nowrap">
-                    {p}
-                    {['Gestor', 'Comprador', 'Solicitante'].includes(p) && <span className="ml-1.5 text-[9px] text-emerald-600 font-medium">ativo</span>}
+                    {r.label}
+                    {dbRolesFor(currentUserRole).includes(r.key) && <span className="ml-1.5 text-[9px] text-violet-600 font-medium">você</span>}
                   </td>
-                  {MODULES.map((m) => (
-                    <td key={m} className="px-2 py-2 text-center">
-                      <input type="checkbox" checked={!!settings.profiles[p]?.[m]} onChange={() => toggle(p, m)}
-                        aria-label={`${p} — ${m}`} className="accent-violet-600 cursor-pointer" />
-                    </td>
-                  ))}
+                  {CRITICAL_MODULES.map((m) => {
+                    const cellKey = `${r.key}:${m.key}`;
+                    return (
+                      <td key={m.key} className="px-2 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={rolePerms.get(cellKey) ?? false}
+                          disabled={saving === cellKey}
+                          onChange={() => toggle(r.key, m.key)}
+                          aria-label={`${r.label} — ${m.label}`}
+                          className="accent-violet-600 cursor-pointer disabled:opacity-40"
+                        />
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </Card>
+      <PendingBanner text="Esta matriz controla apenas as 7 abas com cadeado. As demais abas de Configurações continuam abertas a qualquer usuário logado — se quiser restringir alguma outra, é só pedir." />
     </div>
   );
 }
