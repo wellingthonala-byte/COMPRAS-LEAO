@@ -11,7 +11,7 @@ import { ServiceOrdersPage } from './pages/ServiceOrdersPage';
 import { LoginPage } from './pages/LoginPage';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
-import { fetchRequests, logoutSupabase } from './lib/backend';
+import { fetchRequests, insertStatusHistory, logoutSupabase } from './lib/backend';
 import { initInstallments } from './lib/financeStore';
 import { useLimboAlert } from './lib/useFinanceAlerts';
 import { flushRequestQueue, pendingRequestSyncCount, syncRequests } from './lib/requestSyncQueue';
@@ -90,10 +90,22 @@ export default function App() {
     const prev = prevRequests.current;
     const prevById = new Map(prev.map((r) => [r.id, r]));
     const changed = requests.filter((r) => prevById.get(r.id) !== r);
+    // Entradas de histórico novas desde a última sincronização — só estas vão
+    // para status_history, para não reinserir o histórico inteiro a cada save.
+    const newHistoryByRequest = changed.map((r) => ({
+      r,
+      newEntries: r.history.slice(prevById.get(r.id)?.history.length ?? 0),
+    }));
     prevRequests.current = requests;
     if (changed.length === 0) return;
     const t = setTimeout(() => {
-      syncRequests(changed, currentUser.id).then(() => setPendingSync(pendingRequestSyncCount()));
+      syncRequests(changed, currentUser.id).then((ok) => {
+        setPendingSync(pendingRequestSyncCount());
+        if (!ok) return;
+        for (const { r, newEntries } of newHistoryByRequest) {
+          if (newEntries.length > 0) void insertStatusHistory(r.id, currentUser.id, newEntries, r.status);
+        }
+      });
     }, 800);
     return () => clearTimeout(t);
   }, [requests, currentUser]);

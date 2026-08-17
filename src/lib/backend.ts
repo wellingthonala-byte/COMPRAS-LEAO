@@ -205,6 +205,40 @@ export async function upsertRequests(reqs: PurchaseRequest[], requesterId?: stri
   if (error) throw error;
 }
 
+/**
+ * Grava entradas do histórico na tabela relacional status_history.
+ *
+ * O histórico completo já vive em extra.doc.history (é o que o app lê), mas
+ * a tabela normalizada existe no schema justamente para relatórios/consultas
+ * feitos direto no banco — sem esta chamada ela ficava sempre vazia. Requer
+ * que a solicitação já exista em purchase_requests (chamar depois do
+ * upsertRequests correspondente). Best-effort: nunca lança, uma falha aqui
+ * não pode acompanhar o histórico já gravado como "não aconteceu".
+ */
+export async function insertStatusHistory(
+  requestId: string,
+  userId: string,
+  entries: HistoryEntry[],
+  fallbackStatus: Status,
+): Promise<void> {
+  if (!UUID_RE.test(requestId) || entries.length === 0) return;
+  try {
+    const sb = getSupabase();
+    const rows = entries.map((e) => ({
+      request_id: requestId,
+      status: STATUS_UI_TO_DB[e.to ?? fallbackStatus] ?? 'em_cotacao',
+      user_id: userId,
+      user_name: e.user,
+      notes: e.action,
+      created_at: e.date,
+    }));
+    const { error } = await sb.from('status_history').insert(rows);
+    if (error) throw error;
+  } catch (e) {
+    console.warn('[backend] insertStatusHistory falhou (histórico segue disponível em extra.doc):', e);
+  }
+}
+
 /* ================================================================== */
 /* Ordens de Serviço                                                    */
 /* ================================================================== */
