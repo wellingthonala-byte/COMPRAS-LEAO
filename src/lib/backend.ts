@@ -69,7 +69,11 @@ function rowToRequest(row: DBRequestRow, profileNames: Map<string, string>): Pur
   // Registros criados pelo Compras Leão carregam o documento completo em `extra`
   if (row.extra && (row.extra as { doc?: PurchaseRequest }).doc) {
     const doc = (row.extra as { doc: PurchaseRequest }).doc;
-    return { ...doc, id: row.id };
+    // O número exibido vem sempre de request_number (sequência atômica do
+    // banco), nunca do palpite calculado no navegador de quem criou — dois
+    // usuários criando ao mesmo tempo podem ter adivinhado o mesmo número
+    // localmente, mas o request_number gravado é sempre único.
+    return { ...doc, id: row.id, number: displayNumber(row.request_number, row.created_at) };
   }
   // Registros importados do sistema antigo: compõe a partir das tabelas normalizadas
   const requester = profileNames.get(row.requester_id) ?? 'Usuário';
@@ -165,43 +169,40 @@ export async function fetchRequests(): Promise<PurchaseRequest[] | null> {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Grava/atualiza uma solicitação: colunas principais + documento completo em extra.doc */
+/**
+ * Grava/atualiza uma solicitação: colunas principais + documento completo em extra.doc.
+ *
+ * request_number nunca é calculado aqui: para registros novos o banco atribui
+ * o valor sozinho (coluna com default nextval de uma sequência), o que evita
+ * a colisão de dois navegadores calculando "max+1" ao mesmo tempo. Para
+ * registros existentes, omitir a coluna simplesmente preserva o valor atual.
+ *
+ * Lança em caso de falha — ao contrário da versão antiga, que só logava e
+ * deixava o chamador acreditar que os dados chegaram ao servidor. Quem chama
+ * precisa saber do erro para enfileirar o reprocessamento.
+ */
 export async function upsertRequests(reqs: PurchaseRequest[], requesterId?: string): Promise<void> {
   // Dados de teste locais (ids não-UUID) não sincronizam — ficam só no navegador
   const requests = reqs.filter((r) => UUID_RE.test(r.id));
   if (requests.length === 0) return;
-  try {
-    const sb = getSupabase();
-    const uid = requesterId ?? (await sb.auth.getUser()).data.user?.id;
-    if (!uid) return;
-    // request_number: preserva o dos registros existentes; novos recebem max+1
-    const existing = await fetchAllPages<{ id: string; request_number: number }>((from, to) =>
-      sb.from('purchase_requests').select('id, request_number').range(from, to));
-    const byId = new Map(existing.map((r) => [r.id, r.request_number]));
-    let maxNum = Math.max(0, ...existing.map((r) => r.request_number));
-    const payload = requests.map((r) => {
-      let num = byId.get(r.id);
-      if (num === undefined) { maxNum += 1; num = maxNum; }
-      return {
-        id: r.id,
-        request_number: num,
-        requester_id: uid,
-        sector: r.sector,
-        priority: PRIORITY_UI_TO_DB[r.priority] ?? 'nao_urgente',
-        status: STATUS_UI_TO_DB[r.status] ?? 'em_cotacao',
-        observations: r.observations ?? null,
-        expected_delivery_date: r.deliveryForecast || null,
-        actual_delivery_date: r.realDeliveryDate ?? null,
-        created_at: r.createdAt,
-        updated_at: new Date().toISOString(),
-        extra: { doc: r },
-      };
-    });
-    const { error } = await sb.from('purchase_requests').upsert(payload);
-    if (error) throw error;
-  } catch (e) {
-    console.warn('[backend] upsertRequests falhou (dados seguem no cache local):', e);
-  }
+  const sb = getSupabase();
+  const uid = requesterId ?? (await sb.auth.getUser()).data.user?.id;
+  if (!uid) throw new Error('Usuário não autenticado');
+  const payload = requests.map((r) => ({
+    id: r.id,
+    requester_id: uid,
+    sector: r.sector,
+    priority: PRIORITY_UI_TO_DB[r.priority] ?? 'nao_urgente',
+    status: STATUS_UI_TO_DB[r.status] ?? 'em_cotacao',
+    observations: r.observations ?? null,
+    expected_delivery_date: r.deliveryForecast || null,
+    actual_delivery_date: r.realDeliveryDate ?? null,
+    created_at: r.createdAt,
+    updated_at: new Date().toISOString(),
+    extra: { doc: r },
+  }));
+  const { error } = await sb.from('purchase_requests').upsert(payload);
+  if (error) throw error;
 }
 
 /* ================================================================== */
@@ -403,8 +404,8 @@ export async function fetchInstallments(): Promise<Installment[] | null> {
 }
 
 /**
- * Grava parcelas. Lança em caso de falha, ao contrário de upsertRequests:
- * quem chama precisa saber do erro para enfileirar o reprocessamento.
+ * Grava parcelas. Lança em caso de falha — quem chama precisa saber do erro
+ * para enfileirar o reprocessamento (mesmo padrão de upsertRequests).
  */
 export async function upsertInstallments(items: Installment[]): Promise<void> {
   // Solicitações de teste locais (id não-UUID) não têm linha no banco

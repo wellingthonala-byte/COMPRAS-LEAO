@@ -11,9 +11,10 @@ import { ServiceOrdersPage } from './pages/ServiceOrdersPage';
 import { LoginPage } from './pages/LoginPage';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
-import { fetchRequests, upsertRequests, logoutSupabase } from './lib/backend';
+import { fetchRequests, logoutSupabase } from './lib/backend';
 import { initInstallments } from './lib/financeStore';
 import { useLimboAlert } from './lib/useFinanceAlerts';
+import { flushRequestQueue, pendingRequestSyncCount, syncRequests } from './lib/requestSyncQueue';
 
 const REQUESTS_KEY = 'compras-leao-requests';
 const USER_KEY = 'compras-leao-user';
@@ -42,6 +43,7 @@ export default function App() {
   const [requests, setRequests] = useState<PurchaseRequest[]>(loadRequests);
   const [currentUser, setCurrentUser] = useState<AppUser | null>(loadUser);
   const [syncState, setSyncState] = useState<'idle' | 'syncing' | 'online' | 'offline'>('idle');
+  const [pendingSync, setPendingSync] = useState(0);
   const prevRequests = useRef<PurchaseRequest[]>(requests);
   const remoteLoaded = useRef(false);
 
@@ -64,6 +66,8 @@ export default function App() {
     // As parcelas têm cache e fila próprios (lib/financeStore) e carregam em
     // paralelo: uma falha aqui não deve impedir o Kanban de abrir.
     void initInstallments();
+    // Tenta reenviar solicitações que ficaram pendentes de uma sessão anterior
+    void flushRequestQueue(currentUser.id).then(() => setPendingSync(pendingRequestSyncCount()));
     fetchRequests().then((remote) => {
       if (cancelled) return;
       if (remote === null) {
@@ -78,7 +82,9 @@ export default function App() {
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
-  // Sincroniza com o Supabase apenas as solicitações que mudaram (debounce)
+  // Sincroniza com o Supabase apenas as solicitações que mudaram (debounce).
+  // O que falhar entra numa fila (lib/requestSyncQueue) em vez de sumir num
+  // console.warn — o usuário passa a ver quando algo não chegou ao servidor.
   useEffect(() => {
     if (!currentUser || !remoteLoaded.current) { prevRequests.current = requests; return; }
     const prev = prevRequests.current;
@@ -86,9 +92,20 @@ export default function App() {
     const changed = requests.filter((r) => prevById.get(r.id) !== r);
     prevRequests.current = requests;
     if (changed.length === 0) return;
-    const t = setTimeout(() => { upsertRequests(changed, currentUser.id); }, 800);
+    const t = setTimeout(() => {
+      syncRequests(changed, currentUser.id).then(() => setPendingSync(pendingRequestSyncCount()));
+    }, 800);
     return () => clearTimeout(t);
   }, [requests, currentUser]);
+
+  // Enquanto houver solicitações pendentes, tenta reenviar periodicamente
+  useEffect(() => {
+    if (!currentUser || pendingSync === 0) return;
+    const t = setInterval(() => {
+      flushRequestQueue(currentUser.id).then(() => setPendingSync(pendingRequestSyncCount()));
+    }, 20000);
+    return () => clearInterval(t);
+  }, [currentUser, pendingSync]);
 
   // Alerta de pedidos aprovados e não comprados. Fica aqui, e não na tela do
   // Financeiro, para disparar no login independentemente da página aberta.
@@ -113,6 +130,13 @@ export default function App() {
       {syncState === 'offline' && (
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-white text-xs px-4 py-1.5 rounded-b-xl shadow-lg">
           Sem conexão com o servidor — exibindo dados locais. Entre com seu e-mail para sincronizar.
+        </div>
+      )}
+      {syncState !== 'offline' && pendingSync > 0 && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-white text-xs px-4 py-1.5 rounded-b-xl shadow-lg">
+          {pendingSync === 1
+            ? '1 solicitação não foi salva no servidor — tentando novamente...'
+            : `${pendingSync} solicitações não foram salvas no servidor — tentando novamente...`}
         </div>
       )}
       <Sidebar currentUser={currentUser} onLogout={handleLogout} />
