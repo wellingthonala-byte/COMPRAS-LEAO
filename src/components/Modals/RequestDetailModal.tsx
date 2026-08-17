@@ -900,7 +900,12 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                 <ShieldAlert size={15} />
                 Aguardando aprovação do gestor
               </span>
-            ) : canAdvance && (!isApprovalStep || isApproved) && currentUser.role === 'comprador' ? (
+            ) : canAdvance && isValueApprovalStep && !hasValueApproval && canProject ? (
+              <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
+                <ShieldAlert size={15} />
+                Aguardando aprovação de valor do gestor
+              </span>
+            ) : canAdvance && (!isApprovalStep || isApproved) && (!isValueApprovalStep || hasValueApproval || !canProject) && currentUser.role === 'comprador' ? (
               <button
                 onClick={() => onAdvanceStatus(request.id)}
                 className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
