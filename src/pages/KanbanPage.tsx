@@ -120,6 +120,38 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     });
   };
 
+  /**
+   * Pula "Em Rota" ou "Em Serviço" quando não se aplica ao pedido (ex.:
+   * material entregue sem instalação). Só o comprador pode acionar — checado
+   * aqui também, não só na UI, já que o handler pode ser chamado por
+   * qualquer código que tenha a referência.
+   */
+  const handleSkipStatus = (id: string) => {
+    if (currentUser.role !== 'comprador') return;
+    const req = requests.find((r) => r.id === id);
+    if (!req) return;
+    const idx = STATUS_ORDER.indexOf(req.status);
+    if (idx === -1 || idx + 2 >= STATUS_ORDER.length) return;
+    const skipped = STATUS_ORDER[idx + 1];
+    if (skipped !== 'Em Rota' && skipped !== 'Em Serviço') return;
+    const nextStatus = STATUS_ORDER[idx + 2];
+    const skipEntry = entry(`Etapa "${skipped}" pulada — não aplicável a este pedido`, req.status, nextStatus);
+    const updated = applyChange(id, (r) => ({
+      ...r,
+      status: nextStatus,
+      history: [...r.history, skipEntry],
+    }), req);
+
+    void syncRequestFinance(updated);
+
+    sendNotification({
+      title: `⏭️ ${req.number} — ${nextStatus}`,
+      message: `${currentUser.name} pulou a etapa "${skipped}" e avançou a solicitação de ${req.requester} para "${nextStatus}".`,
+      priority: 3,
+      tags: ['package'],
+    });
+  };
+
   const handleCancel = (id: string, reason: string) => {
     const req = requests.find((r) => r.id === id);
     if (!req || req.status === 'Cancelada' || req.status === 'Finalizado') return;
@@ -290,6 +322,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
           onClose={() => setSelectedId(null)}
           currentUser={currentUser}
           onAdvanceStatus={(id) => { handleAdvanceStatus(id); setSelectedId(null); }}
+          onSkipStatus={(id) => { handleSkipStatus(id); setSelectedId(null); }}
           onApprove={(id, name, approvalId) => { handleApprove(id, name, approvalId); }}
           onApproveValue={handleApproveValue}
           onEdit={handleEdit}

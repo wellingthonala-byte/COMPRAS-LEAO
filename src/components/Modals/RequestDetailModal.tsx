@@ -19,6 +19,7 @@ interface RequestDetailModalProps {
   currentUser: AppUser;
   onClose: () => void;
   onAdvanceStatus: (id: string) => void;
+  onSkipStatus: (id: string) => void;
   onApprove: (id: string, approverName: string, approvalId: string) => void;
   onApproveValue: (id: string) => void;
   onEdit: (id: string, fields: Partial<PurchaseRequest>) => void;
@@ -39,7 +40,7 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Finalizado': <ChevronRight size={14} />,
 };
 
-export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onApprove, onApproveValue, onEdit, onCancel }: RequestDetailModalProps) {
+export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onSkipStatus, onApprove, onApproveValue, onEdit, onCancel }: RequestDetailModalProps) {
   const currentIdx = STATUS_ORDER.indexOf(request.status);
   const isApprovalStep = request.status === 'Em Aprovação';
   const isApproved = !!request.approvedBy;
@@ -57,6 +58,15 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   );
   const totalOpenObjections = request.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
   const canAdvance = currentIdx >= 0 && currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
+
+  // "Em Rota" e "Em Serviço" nem sempre se aplicam (ex.: material entregue
+  // sem instalação). Só o comprador pode pular — quem move o card na prática.
+  const nextStatus = currentIdx >= 0 ? STATUS_ORDER[currentIdx + 1] : undefined;
+  const canSkipNext =
+    canAdvance &&
+    currentUser.role === 'comprador' &&
+    currentIdx + 2 < STATUS_ORDER.length &&
+    (nextStatus === 'Em Rota' || nextStatus === 'Em Serviço');
 
   // Apenas o comprador pode cancelar solicitações
   const canCancel = !isCancelled && !isFinalized && currentUser.role === 'comprador';
@@ -906,13 +916,24 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                 Aguardando aprovação de valor do gestor
               </span>
             ) : canAdvance && (!isApprovalStep || isApproved) && (!isValueApprovalStep || hasValueApproval || !canProject) && currentUser.role === 'comprador' ? (
-              <button
-                onClick={() => onAdvanceStatus(request.id)}
-                className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
-              >
-                <ArrowRight size={15} />
-                Avançar para {STATUS_ORDER[currentIdx + 1]}
-              </button>
+              <div className="flex items-center gap-2">
+                {canSkipNext && (
+                  <button
+                    onClick={() => onSkipStatus(request.id)}
+                    title={`Pular etapa "${nextStatus}" — não aplicável a este pedido`}
+                    className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
+                  >
+                    Pular "{nextStatus}"
+                  </button>
+                )}
+                <button
+                  onClick={() => onAdvanceStatus(request.id)}
+                  className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
+                >
+                  <ArrowRight size={15} />
+                  Avançar para {STATUS_ORDER[currentIdx + 1]}
+                </button>
+              </div>
             ) : null}
           </div>
         </div>
