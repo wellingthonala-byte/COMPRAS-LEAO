@@ -417,9 +417,6 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
             <button onClick={() => exportAll('xls')} className="flex items-center gap-1 text-xs text-slate-500 border border-slate-200 rounded-lg px-2.5 py-2 hover:bg-slate-50 hover:text-emerald-700">
               <FileSpreadsheet size={13} /> Excel
             </button>
-            <button onClick={() => window.print()} className="flex items-center gap-1 text-xs text-slate-500 border border-slate-200 rounded-lg px-2.5 py-2 hover:bg-slate-50">
-              <Printer size={13} /> Imprimir
-            </button>
             <button onClick={refresh} className="flex items-center gap-1 text-xs text-slate-500 border border-slate-200 rounded-lg px-2.5 py-2 hover:bg-slate-50">
               <RefreshCw size={13} /> Atualizar
             </button>
@@ -597,7 +594,6 @@ function OrdersTable({ orders, onView, onAdvance, canAdvanceFrom }: {
   const [page, setPage] = useState(1);
   const [hidden, setHidden] = useState<Set<string>>(new Set(['local', 'ultima']));
   const [showCols, setShowCols] = useState(false);
-  const [selectedRows, setSelectedRows] = useState<Set<string>>(new Set());
   const PAGE = 10;
 
   const columns: { key: string; label: string; value: (o: ServiceOrder) => string | number; render?: (o: ServiceOrder) => React.ReactNode; align?: 'right' }[] = [
@@ -683,16 +679,6 @@ function OrdersTable({ orders, onView, onAdvance, canAdvanceFrom }: {
         <table className="w-full text-left">
           <thead className="sticky top-0 z-10">
             <tr className="bg-slate-50 border-b border-slate-100">
-              <th scope="col" className="px-3 py-2.5 w-8 bg-slate-50">
-                <input type="checkbox" className="accent-violet-600" aria-label="Selecionar página"
-                  checked={pageRows.length > 0 && pageRows.every((r) => selectedRows.has(r.id))}
-                  onChange={() => setSelectedRows((prev) => {
-                    const n = new Set(prev);
-                    const all = pageRows.every((r) => n.has(r.id));
-                    pageRows.forEach((r) => (all ? n.delete(r.id) : n.add(r.id)));
-                    return n;
-                  })} />
-              </th>
               {visible.map((c) => (
                 <th key={c.key} scope="col" className={`px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap bg-slate-50 ${c.align === 'right' ? 'text-right' : ''}`}>
                   <button onClick={() => { if (sortKey === c.key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setSortKey(c.key); setSortDir('asc'); } }}
@@ -707,14 +693,10 @@ function OrdersTable({ orders, onView, onAdvance, canAdvanceFrom }: {
           </thead>
           <tbody>
             {pageRows.length === 0 ? (
-              <tr><td colSpan={visible.length + 2} className="px-4 py-10 text-center text-xs text-slate-400">Nenhuma O.S. encontrada.</td></tr>
+              <tr><td colSpan={visible.length + 1} className="px-4 py-10 text-center text-xs text-slate-400">Nenhuma O.S. encontrada.</td></tr>
             ) : pageRows.map((o) => (
-              <tr key={o.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/70 transition-colors cursor-pointer ${selectedRows.has(o.id) ? 'bg-violet-50/40' : ''}`}
+              <tr key={o.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/70 transition-colors cursor-pointer"
                 onClick={() => onView(o.id)}>
-                <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                  <input type="checkbox" className="accent-violet-600" checked={selectedRows.has(o.id)} aria-label={`Selecionar ${o.number}`}
-                    onChange={() => setSelectedRows((prev) => { const n = new Set(prev); if (n.has(o.id)) n.delete(o.id); else n.add(o.id); return n; })} />
-                </td>
                 {visible.map((c) => (
                   <td key={c.key} className={`px-3 py-2.5 text-xs text-slate-600 ${c.align === 'right' ? 'text-right' : ''}`}>
                     {c.render ? c.render(o) : c.value(o)}
@@ -724,9 +706,14 @@ function OrdersTable({ orders, onView, onAdvance, canAdvanceFrom }: {
                   <div className="flex items-center gap-1">
                     <button onClick={() => onView(o.id)} title="Ver detalhes" aria-label={`Ver ${o.number}`}
                       className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Eye size={13} /></button>
-                    {canAdvanceFrom(o.status) && OS_FLOW.includes(o.status) && OS_FLOW.indexOf(o.status) < OS_FLOW.length - 1 && (
-                      <button onClick={() => onAdvance(o.id)} title={`Avançar para ${OS_FLOW[OS_FLOW.indexOf(o.status) + 1]}`} aria-label={`Avançar ${o.number}`}
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"><ArrowRight size={13} /></button>
+                    {OS_FLOW.includes(o.status) && OS_FLOW.indexOf(o.status) < OS_FLOW.length - 1 && (
+                      canAdvanceFrom(o.status) ? (
+                        <button onClick={() => onAdvance(o.id)} title={`Avançar para ${OS_FLOW[OS_FLOW.indexOf(o.status) + 1]}`} aria-label={`Avançar ${o.number}`}
+                          className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg"><ArrowRight size={13} /></button>
+                      ) : (
+                        <span title="Sem permissão para avançar este status" aria-label="Sem permissão para avançar este status"
+                          className="p-1.5 text-slate-200"><ArrowRight size={13} /></span>
+                      )
                     )}
                   </div>
                 </td>
@@ -737,7 +724,7 @@ function OrdersTable({ orders, onView, onAdvance, canAdvanceFrom }: {
       </div>
 
       <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 text-xs text-slate-500">
-        <span>{rows.length} O.S.{selectedRows.size > 0 ? ` · ${selectedRows.size} selecionada(s)` : ''}</span>
+        <span>{rows.length} O.S.</span>
         <div className="flex items-center gap-2">
           <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1} aria-label="Página anterior"
             className="p-1 rounded-lg border border-slate-200 disabled:opacity-30 hover:bg-slate-50"><ChevronLeft size={14} /></button>
@@ -775,6 +762,8 @@ function NewOSModal({ currentUser, existingNumbers, base, editing = false, onClo
 
   const submit = () => {
     if (!valid) return;
+    const parsedSlaHours = Number.isFinite(Number(f.slaHours)) && Number(f.slaHours) > 0 ? Number(f.slaHours) : 48;
+    const parsedEstimatedValue = f.estimatedValue.trim() !== '' && Number.isFinite(Number(f.estimatedValue)) ? Number(f.estimatedValue) : undefined;
     if (editing && base && onSaveEdit) {
       onSaveEdit({
         ...base,
@@ -782,8 +771,8 @@ function NewOSModal({ currentUser, existingNumbers, base, editing = false, onClo
         type: f.type, category: f.category, customer: f.customer.trim() || undefined,
         equipment: { ...base.equipment, code: f.equipCode, name: f.equipName.trim(), model: f.equipModel, manufacturer: f.equipManufacturer, serial: f.equipSerial, patrimony: f.equipPatrimony, location: f.equipLocation },
         costCenter: f.costCenter, technician: f.technician,
-        priority: f.priority, slaHours: Number(f.slaHours) || 48,
-        estimatedValue: Number(f.estimatedValue) || undefined,
+        priority: f.priority, slaHours: parsedSlaHours,
+        estimatedValue: parsedEstimatedValue,
         dueDate: f.dueDate,
         observations: f.observations.trim() || undefined,
         objectLink: normalizeUrl(f.objectLink) ?? undefined,
@@ -798,8 +787,8 @@ function NewOSModal({ currentUser, existingNumbers, base, editing = false, onClo
       type: f.type, category: f.category, customer: f.customer.trim() || undefined,
       equipment: { code: f.equipCode, name: f.equipName.trim(), model: f.equipModel, manufacturer: f.equipManufacturer, serial: f.equipSerial, patrimony: f.equipPatrimony, location: f.equipLocation },
       costCenter: f.costCenter, requester: currentUser.name, technician: f.technician,
-      priority: f.priority, slaHours: Number(f.slaHours) || 48,
-      estimatedValue: Number(f.estimatedValue) || undefined,
+      priority: f.priority, slaHours: parsedSlaHours,
+      estimatedValue: parsedEstimatedValue,
       openedAt: now, dueDate: f.dueDate, status: 'Aberta',
       observations: f.observations.trim() || undefined,
       objectLink: normalizeUrl(f.objectLink) ?? undefined,
@@ -934,6 +923,8 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
   const [checkDraft, setCheckDraft] = useState('');
   const [mat, setMat] = useState({ product: '', code: '', quantity: '1', unit: 'un', unitValue: '' });
   const [lab, setLab] = useState({ technician: os.technician || '', hours: '', hourRate: '', extraHours: '0' });
+  const [matError, setMatError] = useState('');
+  const [labError, setLabError] = useState('');
 
   const idx = OS_FLOW.indexOf(os.status);
   const closed = osIsClosed(os);
@@ -943,7 +934,11 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
   const matCost = os.materials.reduce((s, m) => s + m.quantity * m.unitValue, 0);
 
   const addMaterial = () => {
-    if (!mat.product.trim() || !Number(mat.quantity)) return;
+    if (!mat.product.trim() || !Number(mat.quantity)) {
+      setMatError('Informe produto e quantidade válidos.');
+      return;
+    }
+    setMatError('');
     onUpdate((o) => addEvent({
       ...o,
       materials: [...o.materials, { id: `m-${Date.now()}`, product: mat.product.trim(), code: mat.code, quantity: Number(mat.quantity), unit: mat.unit, unitValue: Number(mat.unitValue) || 0 }],
@@ -952,7 +947,11 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
   };
 
   const addLabor = () => {
-    if (!lab.technician.trim() || !Number(lab.hours)) return;
+    if (!lab.technician.trim() || !Number(lab.hours)) {
+      setLabError('Informe técnico e horas válidas.');
+      return;
+    }
+    setLabError('');
     onUpdate((o) => addEvent({
       ...o,
       labor: [...o.labor, { id: `l-${Date.now()}`, technician: lab.technician.trim(), hours: Number(lab.hours), hourRate: Number(lab.hourRate) || 0, extraHours: Number(lab.extraHours) || 0 }],
@@ -1100,9 +1099,9 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                     ))}
                   </dl>
                   <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-[11px] text-slate-400">
-                    <p className="flex items-center gap-1.5"><Paperclip size={11} /> Anexos e laudos — habilitados com o backend</p>
-                    <p className="flex items-center gap-1.5"><Camera size={11} /> Registro fotográfico antes/depois — habilitado com o backend</p>
-                    <p className="flex items-center gap-1.5"><PenLine size={11} /> Assinatura digital — habilitada com o backend</p>
+                    <p className="flex items-center gap-1.5"><Paperclip size={11} /> Anexos e laudos — em breve</p>
+                    <p className="flex items-center gap-1.5"><Camera size={11} /> Registro fotográfico antes/depois — em breve</p>
+                    <p className="flex items-center gap-1.5"><PenLine size={11} /> Assinatura digital — em breve</p>
                   </div>
                 </div>
               </div>
@@ -1208,6 +1207,7 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                     <button onClick={addMaterial} className="flex items-center gap-1 text-xs text-violet-600 border border-violet-200 hover:border-violet-400 px-2.5 py-1.5 rounded-lg font-medium"><Plus size={12} /> Lançar</button>
                   </div>
                 )}
+                {matError && <p className="text-[11px] text-red-500 mt-1.5">{matError}</p>}
               </div>
 
               {/* Mão de obra */}
@@ -1249,7 +1249,8 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                     <button onClick={addLabor} className="flex items-center gap-1 text-xs text-violet-600 border border-violet-200 hover:border-violet-400 px-2.5 py-1.5 rounded-lg font-medium"><Plus size={12} /> Lançar</button>
                   </div>
                 )}
-                <p className="text-[11px] text-slate-400 mt-2">Registro de deslocamento — habilitado com o backend.</p>
+                {labError && <p className="text-[11px] text-red-500 mt-1.5">{labError}</p>}
+                <p className="text-[11px] text-slate-400 mt-2">Registro de deslocamento — em breve.</p>
                 <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-sm">
                   <span className="font-semibold text-slate-600">Custo total da O.S. (atualizado automaticamente)</span>
                   <span className="font-bold text-violet-700">{fmtBRL(cost)}</span>
@@ -1304,7 +1305,7 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                         <strong>{e.user}</strong> — {e.action}
                         {e.from && e.to && <span className="text-slate-400"> ({e.from} → {e.to})</span>}
                       </p>
-                      <p className="text-[10px] text-slate-400">{fmtDateTime(e.date)} · IP e dispositivo registrados pelo backend</p>
+                      <p className="text-[10px] text-slate-400">{fmtDateTime(e.date)} · Registro de IP e dispositivo em desenvolvimento</p>
                     </div>
                   </div>
                 ))}

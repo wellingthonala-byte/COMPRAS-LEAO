@@ -22,7 +22,7 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
     setTestStatus('enviando...');
     const result = await sendTestNotification();
     if (result.ok) {
-      setTestStatus('✓ enviado!');
+      setTestStatus('✓ enviado! (verifique no dispositivo)');
     } else {
       setTestStatus(`✗ erro: ${result.error ?? 'rede'}`);
     }
@@ -87,6 +87,7 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
         <button
           onClick={() => { setShowNotifications(!showNotifications); if (!showNotifications) markAllRead(); }}
           className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-50 rounded-lg transition-colors"
+          aria-label="Notificações"
         >
           <Bell size={18} />
           {unreadCount > 0 && (
@@ -102,7 +103,7 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
             <div className="absolute right-0 top-12 w-80 bg-white rounded-2xl border border-slate-200 shadow-xl z-40 overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
                 <h3 className="font-semibold text-slate-800 text-sm">Notificações</h3>
-                <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600" aria-label="Fechar notificações">
                   <X size={16} />
                 </button>
               </div>
@@ -140,7 +141,8 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
         <button
           onClick={handleTestNotification}
           title={`Testar notificação ntfy (tópico: ${getNtfyTopic()})`}
-          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition-colors"
+          disabled={testStatus === 'enviando...'}
+          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
         >
           <Send size={13} />
           {testStatus ?? 'Testar ntfy'}

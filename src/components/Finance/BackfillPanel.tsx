@@ -3,7 +3,7 @@ import { History, Play, Search, CheckCircle2, AlertTriangle } from 'lucide-react
 import { PurchaseRequest } from '../../types';
 import { PAYMENT_TERMS_PRESETS } from '../../lib/paymentTerms';
 import { getFinanceSettings } from '../../lib/financeSettings';
-import { useInstallments } from '../../lib/financeStore';
+import { useInstallments, pendingCount } from '../../lib/financeStore';
 import { applyBackfill, BackfillPlan, planBackfill } from '../../lib/financeBackfill';
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -23,6 +23,7 @@ export function BackfillPanel({ requests, onApply }: {
   const [termsId, setTermsId] = useState(() => getFinanceSettings().backfillTermsId);
   const [plan, setPlan] = useState<BackfillPlan | null>(null);
   const [running, setRunning] = useState(false);
+  const [simulating, setSimulating] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [showSkipped, setShowSkipped] = useState(false);
 
@@ -34,19 +35,27 @@ export function BackfillPanel({ requests, onApply }: {
   }, [plan]);
 
   const preview = () => {
+    if (simulating) return;
+    setSimulating(true);
     setResult(null);
     setPlan(planBackfill(requests, installments, { fallbackTermsId: termsId }));
+    setSimulating(false);
   };
 
   const run = async () => {
     if (!plan || plan.candidates.length === 0) return;
+    if (!window.confirm(`Confirma gerar ${plan.totalInstallments} parcela(s) para ${plan.candidates.length} pedido(s)? Esta ação grava direto em produção.`)) return;
     setRunning(true);
     try {
       const out = await applyBackfill(plan);
       onApply(out.patchedRequests);
+      const pending = pendingCount();
       setResult(
-        `${out.installmentsCreated} parcela(s) criadas em ${out.patchedRequests.length} pedido(s). `
-        + 'A projeção já reflete o resultado.'
+        pending > 0
+          ? `${out.installmentsCreated} parcela(s) criadas em ${out.patchedRequests.length} pedido(s). `
+            + `Atenção: ${pending} ficaram pendentes de reenvio (sem conexão com o servidor) — serão reenviadas automaticamente.`
+          : `${out.installmentsCreated} parcela(s) criadas em ${out.patchedRequests.length} pedido(s). `
+            + 'A projeção já reflete o resultado.'
       );
       setPlan(null);
     } finally {
@@ -81,9 +90,10 @@ export function BackfillPanel({ requests, onApply }: {
         </div>
         <button
           onClick={preview}
-          className="flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 hover:bg-violet-100 rounded-lg px-3 py-1.5 transition-colors"
+          disabled={simulating}
+          className="flex items-center gap-1.5 text-xs font-medium text-violet-700 bg-violet-50 border border-violet-200 hover:bg-violet-100 disabled:opacity-60 rounded-lg px-3 py-1.5 transition-colors"
         >
-          <Search size={12} /> Simular (dry-run)
+          <Search size={12} /> {simulating ? 'Simulando...' : 'Simular (dry-run)'}
         </button>
         {plan && plan.candidates.length > 0 && (
           <button

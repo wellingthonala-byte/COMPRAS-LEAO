@@ -258,7 +258,12 @@ const SERVICE_TYPE_LABEL: Record<string, string> = {
 function rowToOrder(row: DBOsRow, profileNames: Map<string, string>): ServiceOrder {
   if (row.extra && (row.extra as { doc?: ServiceOrder }).doc) {
     const doc = (row.extra as { doc: ServiceOrder }).doc;
-    return { ...doc, id: row.id };
+    const dDoc = new Date(row.created_at);
+    return {
+      ...doc,
+      id: row.id,
+      number: `OS-${String(row.order_number).padStart(3, '0')}/${String(dDoc.getMonth() + 1).padStart(2, '0')}/${String(dDoc.getFullYear()).slice(-2)}`,
+    };
   }
   const requester = profileNames.get(row.requester_id) ?? 'Usuário';
   const d = new Date(row.created_at);
@@ -311,16 +316,9 @@ export async function upsertServiceOrders(allOrders: ServiceOrder[]): Promise<vo
     const sb = getSupabase();
     const uid = (await sb.auth.getUser()).data.user?.id;
     if (!uid) return;
-    const existing = await fetchAllPages<{ id: string; order_number: number }>((from, to) =>
-      sb.from('service_orders').select('id, order_number').range(from, to));
-    const byId = new Map(existing.map((r) => [r.id, r.order_number]));
-    let maxNum = Math.max(0, ...existing.map((r) => r.order_number));
     const payload = orders.map((o) => {
-      let num = byId.get(o.id);
-      if (num === undefined) { maxNum += 1; num = maxNum; }
       return {
         id: o.id,
-        order_number: num,
         requester_id: uid,
         service_type: 'manutencao',
         description: o.description || o.title,

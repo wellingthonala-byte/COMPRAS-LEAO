@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { PaymentTerms } from '../../types/finance';
 import {
   PAYMENT_TERMS_PRESETS, findPresetId, formatPaymentTerms, normalizeDays, parseCustomDays,
@@ -21,6 +21,14 @@ export function PaymentTermsField({ value, onChange }: {
   const isCustom = !!value && presetId === null;
   const [mode, setMode] = useState<string>(isCustom ? CUSTOM : (presetId ?? ''));
   const [customText, setCustomText] = useState(isCustom ? normalizeDays(value.days).join('/') : '');
+
+  useEffect(() => {
+    const presetIdNow = findPresetId(value);
+    const isCustomNow = !!value && presetIdNow === null;
+    setMode(isCustomNow ? CUSTOM : (presetIdNow ?? ''));
+    setCustomText(isCustomNow ? normalizeDays(value.days).join('/') : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
   const handleSelect = (id: string) => {
     setMode(id);

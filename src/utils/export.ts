@@ -19,7 +19,11 @@ export function downloadBlob(content: string, filename: string, mime: string): v
 }
 
 export function exportCSV(headers: string[], rows: (string | number)[][], name: string): void {
-  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
+  const esc = (v: string | number) => {
+    let s = String(v);
+    if (/^[=+\-@]/.test(s)) s = "'" + s;
+    return `"${s.replace(/"/g, '""')}"`;
+  };
   const csv = [headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))].join('\n');
   downloadBlob(csv, `${name}.csv`, 'text/csv;charset=utf-8');
 }

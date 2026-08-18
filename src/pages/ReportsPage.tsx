@@ -1,4 +1,4 @@
-import { Component, Fragment, ReactNode, useEffect, useMemo, useState } from 'react';
+import { Component, Fragment, ReactNode, useMemo, useState } from 'react';
 import {
   Package, Clock, CheckCircle, XCircle, DollarSign, PiggyBank, Timer, Truck,
   ArrowUpRight, ArrowDownRight, Minus, Search, Download, Printer, FileSpreadsheet,
@@ -542,23 +542,8 @@ function RankingCard({ title, entries, format }: { title: string; entries: { lab
 }
 
 /* ------------------------------------------------------------------ */
-/* Skeleton / Error boundary                                           */
+/* Error boundary                                                      */
 /* ------------------------------------------------------------------ */
-function Skeleton() {
-  return (
-    <div className="space-y-5 animate-pulse" aria-busy="true" aria-label="Carregando relatórios">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-28 bg-slate-200/60 rounded-2xl" />)}
-      </div>
-      <div className="h-12 bg-slate-200/60 rounded-2xl" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-56 bg-slate-200/60 rounded-2xl" />)}
-      </div>
-      <div className="h-72 bg-slate-200/60 rounded-2xl" />
-    </div>
-  );
-}
-
 class ReportErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
   state = { hasError: false };
   static getDerivedStateFromError() { return { hasError: true }; }
@@ -586,7 +571,6 @@ class ReportErrorBoundary extends Component<{ children: ReactNode }, { hasError:
 interface ReportsPageProps { requests: PurchaseRequest[] }
 
 export function ReportsPage({ requests }: ReportsPageProps) {
-  const [loading, setLoading] = useState(true);
   const [period, setPeriod] = useState<PeriodKey>('todos');
   const [fSector, setFSector] = useState('');
   const [fRequester, setFRequester] = useState('');
@@ -594,11 +578,6 @@ export function ReportsPage({ requests }: ReportsPageProps) {
   const [fCategory, setFCategory] = useState('');
   const [fStatus, setFStatus] = useState('');
   const [fPriority, setFPriority] = useState('');
-
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 450);
-    return () => clearTimeout(t);
-  }, []);
 
   const sectors = useMemo(() => [...new Set(requests.map((r) => r.sector))].sort(), [requests]);
   const requesters = useMemo(() => [...new Set(requests.map((r) => r.requester))].sort(), [requests]);
@@ -641,7 +620,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
   const kpiPrev = useMemo(() => (previous ? computeKpis(previous) : null), [previous]);
   const delta = (cur: number, prev?: number | null): number | null => {
     if (kpiPrev === null || prev === undefined || prev === null) return null;
-    if (prev === 0) return cur > 0 ? 100 : 0;
+    if (prev === 0) return cur > 0 ? 100 : null;
     return Math.round(((cur - prev) / prev) * 100);
   };
 
@@ -789,8 +768,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
     <div className="flex flex-col min-h-screen lg:pl-60 bg-slate-50">
       <Header title="Relatórios" subtitle="Business Intelligence — análise de compras e solicitações" requests={requests} />
       <div className="flex-1 pt-16 px-4 md:px-6 py-6">
-        {loading ? <Skeleton /> : (
-          <ReportErrorBoundary>
+        <ReportErrorBoundary>
             <div className="space-y-5">
 
               {/* Filtros inteligentes */}
@@ -990,8 +968,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
                 </>
               )}
             </div>
-          </ReportErrorBoundary>
-        )}
+        </ReportErrorBoundary>
       </div>
     </div>
   );

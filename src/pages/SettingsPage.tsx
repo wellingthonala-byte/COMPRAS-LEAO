@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Building2, Palette, Users, ShieldCheck, GitBranch, ShoppingCart, Truck, Bell,
   Plug, Lock, DatabaseBackup, SlidersHorizontal, ScrollText, KeyRound, Database,
@@ -57,6 +57,9 @@ export interface AppSettings {
   autoBackup: boolean;
 }
 
+/** Versão do schema de backup — incrementar quando o formato do JSON exportado mudar. */
+const BACKUP_SCHEMA_VERSION = 1;
+
 /** Cache local — só usado para pintar a tela instantaneamente e como fallback
  *  se o Supabase estiver fora do ar. A fonte de verdade é a tabela app_settings. */
 const SETTINGS_CACHE_KEY = 'compras-leao-settings';
@@ -70,6 +73,10 @@ const CRITICAL_MODULES: { key: string; label: string }[] = [
   { key: 'auditoria', label: 'Auditoria' },
   { key: 'api', label: 'API' },
   { key: 'banco', label: 'Banco de Dados' },
+  { key: 'compras', label: 'Compras' },
+  { key: 'fornecedores', label: 'Fornecedores' },
+  { key: 'financeiro', label: 'Financeiro' },
+  { key: 'notificacoes', label: 'Notificações' },
 ];
 
 /** Papéis reais do banco (public.app_role) para a matriz de permissões. */
@@ -134,10 +141,10 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof Building2; critic
   { key: 'usuarios', label: 'Usuários', icon: Users, critical: true, keywords: 'usuário senha cargo criar editar excluir' },
   { key: 'perfis', label: 'Perfis e Permissões', icon: ShieldCheck, critical: true, keywords: 'permissão perfil administrador módulo acesso' },
   { key: 'aprovacao', label: 'Fluxo de Aprovação', icon: GitBranch, keywords: 'aprovação alçada valor aprovador nível' },
-  { key: 'compras', label: 'Compras', icon: ShoppingCart, keywords: 'numeração prefixo sla prioridade categoria centro de custo' },
-  { key: 'fornecedores', label: 'Fornecedores', icon: Truck, keywords: 'fornecedor avaliação score homologação bloqueio' },
-  { key: 'financeiro', label: 'Financeiro', icon: PiggyBank, keywords: 'financeiro parcela previsão vencimento feriado limbo comprometido caixa' },
-  { key: 'notificacoes', label: 'Notificações', icon: Bell, keywords: 'notificação push email whatsapp ntfy alerta' },
+  { key: 'compras', label: 'Compras', icon: ShoppingCart, critical: true, keywords: 'numeração prefixo sla prioridade categoria centro de custo' },
+  { key: 'fornecedores', label: 'Fornecedores', icon: Truck, critical: true, keywords: 'fornecedor avaliação score homologação bloqueio' },
+  { key: 'financeiro', label: 'Financeiro', icon: PiggyBank, critical: true, keywords: 'financeiro parcela previsão vencimento feriado limbo comprometido caixa' },
+  { key: 'notificacoes', label: 'Notificações', icon: Bell, critical: true, keywords: 'notificação push email whatsapp ntfy alerta' },
   { key: 'integracoes', label: 'Integrações', icon: Plug, keywords: 'erp api webhook smtp google microsoft slack teams power bi' },
   { key: 'seguranca', label: 'Segurança', icon: Lock, critical: true, keywords: 'mfa sessão ip sso login auditoria log' },
   { key: 'backup', label: 'Backup', icon: DatabaseBackup, critical: true, keywords: 'backup restauração download exportar importar' },
@@ -150,14 +157,16 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof Building2; critic
 /* ================================================================== */
 /* Componentes reutilizáveis                                           */
 /* ================================================================== */
-function Field({ label, value, onChange, placeholder, type = 'text', span }: {
-  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; span?: boolean;
+function Field({ label, value, onChange, placeholder, type = 'text', span, min }: {
+  label: string; value: string; onChange: (v: string) => void; placeholder?: string; type?: string; span?: boolean; min?: number;
 }) {
+  const id = useId();
   return (
     <div className={span ? 'sm:col-span-2' : ''}>
-      <label className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
+      <label htmlFor={id} className="block text-xs font-medium text-slate-600 mb-1">{label}</label>
       <input
-        type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        id={id}
+        type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} min={min}
         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white"
       />
     </div>
@@ -276,6 +285,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   const [realUsersLoading, setRealUsersLoading] = useState(true);
   const [realUsersError, setRealUsersError] = useState<string | null>(null);
   const justLoaded = useRef(false);
+  const savingRef = useRef(false);
 
   const loadRealUsers = () => {
     setRealUsersLoading(true);
@@ -336,6 +346,8 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   }, []);
 
   const saveNow = async (data: AppSettings) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaveState('saving');
     setSaveError(null);
     try {
@@ -345,6 +357,8 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
     } catch (e) {
       setSaveState('error');
       setSaveError(e instanceof Error ? e.message : 'Falha ao salvar');
+    } finally {
+      savingRef.current = false;
     }
   };
 
@@ -352,6 +366,12 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   useEffect(() => {
     if (settingsLoading) return;
     if (justLoaded.current) { justLoaded.current = false; return; }
+    const suppliersTotalScore = settings.suppliers.criterioPrazo + settings.suppliers.criterioPreco + settings.suppliers.criterioQualidade;
+    if (suppliersTotalScore !== 100) { setSaveState('error'); setSaveError('Soma dos pesos de avaliação de fornecedores precisa ser 100%.'); return; }
+    const sessaoMinutosNum = Number(settings.security.sessaoMinutos);
+    if (settings.security.sessaoMinutos !== '' && (!Number.isFinite(sessaoMinutosNum) || sessaoMinutosNum <= 0)) {
+      setSaveState('error'); setSaveError('Duração da sessão inválida.'); return;
+    }
     setSaveState('dirty');
     const t = setTimeout(() => { saveNow(settings); }, 700);
     return () => clearTimeout(t);
@@ -481,7 +501,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
                  saveState === 'error' ? (
                    <>
                      <AlertTriangle size={13} /> Erro ao salvar{saveError ? ` — ${saveError}` : ''}
-                     <button onClick={() => saveNow(settings)} className="underline hover:text-red-800 font-semibold ml-1">Tentar novamente</button>
+                     <button onClick={() => saveNow(settings)} disabled={savingRef.current} className="underline hover:text-red-800 font-semibold ml-1 disabled:opacity-50 disabled:cursor-not-allowed">Tentar novamente</button>
                    </>
                  ) :
                  <><AlertTriangle size={13} /> Alterações não salvas</>}
@@ -835,13 +855,21 @@ function ApprovalSection({ settings, patch }: { settings: AppSettings; patch: Pa
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-3">
             <Field label="Valor de alçada do gestor (R$)" value={a.valorAlcada} onChange={(v) => patch('approval', { valorAlcada: v })} placeholder="5000" type="number" />
             <Field label="Auto-aprovar abaixo de (R$)" value={a.autoAprovarAbaixo} onChange={(v) => patch('approval', { autoAprovarAbaixo: v })} placeholder="500" type="number" />
+            {(() => {
+              const valorAlcada = Number(a.valorAlcada);
+              const autoAprovarAbaixo = Number(a.autoAprovarAbaixo);
+              if (valorAlcada > 0 && autoAprovarAbaixo > 0 && autoAprovarAbaixo >= valorAlcada) {
+                return <p className="sm:col-span-2 text-xs text-red-600">O valor de auto-aprovação deve ser menor que a alçada.</p>;
+              }
+              return null;
+            })()}
           </div>
         )}
         <Toggle label="Aprovação por setor / centro de custo" hint="Cada setor tem seu próprio aprovador responsável"
           checked={a.aprovacaoPorSetor} onChange={(v) => patch('approval', { aprovacaoPorSetor: v })} />
         <div className="py-3">
-          <label className="block text-xs font-medium text-slate-600 mb-1">Quantidade de níveis de aprovação</label>
-          <select value={a.niveis} onChange={(e) => patch('approval', { niveis: Number(e.target.value) })}
+          <label htmlFor="approval-niveis" className="block text-xs font-medium text-slate-600 mb-1">Quantidade de níveis de aprovação</label>
+          <select id="approval-niveis" value={a.niveis} onChange={(e) => patch('approval', { niveis: Number(e.target.value) })}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
             <option value={1}>1 nível — gestor (atual)</option>
             <option value={2}>2 níveis — gestor → diretor</option>
@@ -981,6 +1009,11 @@ function SuppliersSection({ settings, patch }: { settings: AppSettings; patch: P
           <p className={`text-xs font-medium ${totalScore === 100 ? 'text-emerald-600' : 'text-red-500'}`}>
             Soma dos pesos: {totalScore}% {totalScore !== 100 && '— ajuste para totalizar 100%'}
           </p>
+          {totalScore !== 100 && (
+            <p className="text-xs text-red-500 font-medium">
+              Configuração inválida: esta alteração não será salva enquanto a soma dos pesos não for 100%.
+            </p>
+          )}
         </div>
       </Card>
       <Card title="Política de Fornecedores">
@@ -1071,8 +1104,31 @@ function SecuritySection({ settings, patch, users }: { settings: AppSettings; pa
         <Toggle label="Autenticação em dois fatores (MFA)" hint="Exigir segundo fator no login" checked={s.mfa} onChange={(v) => patch('security', { mfa: v })} />
         <Toggle label="Login único (SSO)" hint="Autenticação via provedor corporativo" checked={s.sso} onChange={(v) => patch('security', { sso: v })} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-3">
-          <Field label="Expiração da sessão (minutos)" value={s.sessaoMinutos} onChange={(v) => patch('security', { sessaoMinutos: v })} type="number" />
-          <Field label="IPs permitidos (separados por vírgula)" value={s.ipPermitido} onChange={(v) => patch('security', { ipPermitido: v })} placeholder="Todos" />
+          <div>
+            <Field label="Expiração da sessão (minutos)" value={s.sessaoMinutos} onChange={(v) => patch('security', { sessaoMinutos: v })} type="number" min={1} />
+            {(() => {
+              const n = Number(s.sessaoMinutos);
+              if (s.sessaoMinutos !== '' && (!Number.isFinite(n) || n <= 0)) {
+                return <p className="text-xs text-red-600 mt-1">A duração da sessão deve ser um número maior que zero.</p>;
+              }
+              return null;
+            })()}
+          </div>
+          <div>
+            <Field label="IPs permitidos (separados por vírgula)" value={s.ipPermitido} onChange={(v) => patch('security', { ipPermitido: v })} placeholder="Todos" />
+            {(() => {
+              const v = s.ipPermitido.trim();
+              if (!v) return null;
+              const parts = v.split(',').map((p) => p.trim()).filter(Boolean);
+              const ipRegex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?$/;
+              const isSpecial = (p: string) => /^(todos|all)$/i.test(p);
+              const invalid = parts.some((p) => !isSpecial(p) && !ipRegex.test(p));
+              if (invalid) {
+                return <p className="text-xs text-red-600 mt-1">Formato inválido. Use IPs/CIDR como 192.168.0.1 ou 10.0.0.0/24, separados por vírgula.</p>;
+              }
+              return null;
+            })()}
+          </div>
         </div>
       </Card>
       <Card title="Histórico de Login" subtitle="Último acesso registrado de cada usuário neste navegador">
@@ -1101,6 +1157,8 @@ function BackupSection({ settings, setSettings, showToast }: {
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
+  const [versionMismatch, setVersionMismatch] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   const doBackup = () => {
     const data: Record<string, unknown> = {};
@@ -1108,7 +1166,7 @@ function BackupSection({ settings, setSettings, showToast }: {
       const raw = localStorage.getItem(k);
       if (raw) { try { data[k] = JSON.parse(raw); } catch { data[k] = raw; } }
     });
-    const json = JSON.stringify({ exportedAt: new Date().toISOString(), data }, null, 2);
+    const json = JSON.stringify({ version: BACKUP_SCHEMA_VERSION, exportedAt: new Date().toISOString(), data }, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1123,16 +1181,23 @@ function BackupSection({ settings, setSettings, showToast }: {
     showToast('Backup gerado e baixado');
   };
 
-  const doRestore = (content: string) => {
+  const doRestore = (content: string, skipVersionCheck = false) => {
     try {
       const parsed = JSON.parse(content);
+      if (!skipVersionCheck && typeof parsed.version === 'number' && parsed.version !== BACKUP_SCHEMA_VERSION) {
+        setConfirmRestore(null);
+        setVersionMismatch(content);
+        return;
+      }
       const data = parsed.data ?? parsed;
+      setRestoring(true);
       Object.entries(data).forEach(([k, v]) => {
         if (k.startsWith('compras-leao-')) localStorage.setItem(k, JSON.stringify(v));
       });
       showToast('Backup restaurado — recarregando...');
       setTimeout(() => window.location.reload(), 1200);
     } catch {
+      setRestoring(false);
       showToast('Arquivo de backup inválido');
     }
   };
@@ -1187,8 +1252,28 @@ function BackupSection({ settings, setSettings, showToast }: {
             <h3 className="font-semibold text-slate-800 mb-1">Restaurar backup?</h3>
             <p className="text-sm text-slate-500 mb-4">Os dados atuais serão <strong>substituídos</strong> pelos dados do arquivo. Esta ação não pode ser desfeita.</p>
             <div className="flex justify-center gap-2">
-              <button onClick={() => setConfirmRestore(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Cancelar</button>
-              <button onClick={() => doRestore(confirmRestore)} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium">Restaurar</button>
+              <button onClick={() => setConfirmRestore(null)} disabled={restoring} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium disabled:opacity-50">Cancelar</button>
+              <button onClick={() => doRestore(confirmRestore)} disabled={restoring}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                {restoring ? 'Restaurando...' : 'Restaurar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {versionMismatch && (
+        <div className="fixed inset-0 bg-slate-900/40 z-50 flex items-center justify-center p-4" onClick={() => !restoring && setVersionMismatch(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 text-center" onClick={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true">
+            <AlertTriangle size={26} className="text-amber-500 mx-auto mb-2" />
+            <h3 className="font-semibold text-slate-800 mb-1">Versão de backup diferente</h3>
+            <p className="text-sm text-slate-500 mb-4">Este backup pode ser de uma versão diferente do sistema — restaurar mesmo assim?</p>
+            <div className="flex justify-center gap-2">
+              <button onClick={() => setVersionMismatch(null)} disabled={restoring} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg font-medium disabled:opacity-50">Cancelar</button>
+              <button onClick={() => { const c = versionMismatch; setVersionMismatch(null); if (c) doRestore(c, true); }} disabled={restoring}
+                className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed">
+                {restoring ? 'Restaurando...' : 'Restaurar mesmo assim'}
+              </button>
             </div>
           </div>
         </div>
@@ -1205,29 +1290,29 @@ function CustomizationSection({ settings, patch }: { settings: AppSettings; patc
         <Field label="Nome do sistema" value={c.nomeSistema} onChange={(v) => patch('customization', { nomeSistema: v })} />
         <Field label="Texto do rodapé" value={c.rodape} onChange={(v) => patch('customization', { rodape: v })} placeholder="© 2026 Sua Empresa" />
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Idioma</label>
-          <select value={c.idioma} onChange={(e) => patch('customization', { idioma: e.target.value })}
+          <label htmlFor="customization-idioma" className="block text-xs font-medium text-slate-600 mb-1">Idioma</label>
+          <select id="customization-idioma" value={c.idioma} onChange={(e) => patch('customization', { idioma: e.target.value })}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
             {['Português (Brasil)', 'English (US)', 'Español'].map((x) => <option key={x}>{x}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Fuso horário</label>
-          <select value={c.fuso} onChange={(e) => patch('customization', { fuso: e.target.value })}
+          <label htmlFor="customization-fuso" className="block text-xs font-medium text-slate-600 mb-1">Fuso horário</label>
+          <select id="customization-fuso" value={c.fuso} onChange={(e) => patch('customization', { fuso: e.target.value })}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
             {['America/Sao_Paulo', 'America/Manaus', 'America/Fortaleza', 'UTC'].map((x) => <option key={x}>{x}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Formato de data</label>
-          <select value={c.formatoData} onChange={(e) => patch('customization', { formatoData: e.target.value })}
+          <label htmlFor="customization-formato-data" className="block text-xs font-medium text-slate-600 mb-1">Formato de data</label>
+          <select id="customization-formato-data" value={c.formatoData} onChange={(e) => patch('customization', { formatoData: e.target.value })}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
             {['DD/MM/AAAA', 'MM/DD/AAAA', 'AAAA-MM-DD'].map((x) => <option key={x}>{x}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-slate-600 mb-1">Formato monetário</label>
-          <select value={c.formatoMoeda} onChange={(e) => patch('customization', { formatoMoeda: e.target.value })}
+          <label htmlFor="customization-formato-moeda" className="block text-xs font-medium text-slate-600 mb-1">Formato monetário</label>
+          <select id="customization-formato-moeda" value={c.formatoMoeda} onChange={(e) => patch('customization', { formatoMoeda: e.target.value })}
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
             {['R$ 1.234,56', '$ 1,234.56', '€ 1.234,56'].map((x) => <option key={x}>{x}</option>)}
           </select>
@@ -1366,6 +1451,11 @@ function MigrationTool() {
   const [running, setRunning] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [log, setLog] = useState<string[]>([]);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [log]);
 
   const start = async () => {
     setConfirming(false);
@@ -1394,11 +1484,11 @@ function MigrationTool() {
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Chave service_role LEGADA do projeto ANTIGO (começa com eyJ...)</label>
-          <input type="password" value={oldSecret} onChange={(e) => setOldSecret(e.target.value)} placeholder="eyJhbGciOi..." className={input} disabled={running} />
+          <input type="password" autoComplete="off" value={oldSecret} onChange={(e) => setOldSecret(e.target.value)} placeholder="eyJhbGciOi..." className={input} disabled={running} />
         </div>
         <div>
           <label className="block text-xs font-medium text-slate-600 mb-1">Chave service_role LEGADA do projeto NOVO (começa com eyJ...)</label>
-          <input type="password" value={newSecret} onChange={(e) => setNewSecret(e.target.value)} placeholder="eyJhbGciOi..." className={input} disabled={running} />
+          <input type="password" autoComplete="off" value={newSecret} onChange={(e) => setNewSecret(e.target.value)} placeholder="eyJhbGciOi..." className={input} disabled={running} />
         </div>
         {(oldSecret.trim().startsWith('sb_secret') || newSecret.trim().startsWith('sb_secret')) && (
           <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-3 py-2.5">
@@ -1422,7 +1512,7 @@ function MigrationTool() {
           </div>
         )}
         {log.length > 0 && (
-          <div className="bg-slate-900 rounded-xl p-3 max-h-64 overflow-y-auto">
+          <div ref={logRef} className="bg-slate-900 rounded-xl p-3 max-h-64 overflow-y-auto">
             {log.map((l, i) => (
               <p key={i} className={`text-[11px] font-mono leading-relaxed ${l.startsWith('❌') ? 'text-red-400' : l.startsWith('✅') ? 'text-emerald-400' : 'text-slate-300'}`}>{l}</p>
             ))}
@@ -1444,7 +1534,7 @@ function DatabaseSection({ requests, users, settings }: { requests: PurchaseRequ
     const v = localStorage.getItem(k) ?? '';
     bytes += k.length + v.length;
     if (k !== 'compras-leao-fav-settings') {
-      try { JSON.parse(v); } catch { integrity = v === '1' || !v.startsWith('{') && !v.startsWith('['); }
+      try { JSON.parse(v); } catch { integrity = false; }
     }
   }
   const lastBackup = settings.backups[0]?.date;

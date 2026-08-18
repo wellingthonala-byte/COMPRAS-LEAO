@@ -117,6 +117,9 @@ export function loadServiceOrders(): ServiceOrder[] {
       if (Array.isArray(parsed)) {
         return parsed.map((o) => ({
           checklist: [],
+          materials: [],
+          labor: [],
+          comments: [],
           ...o,
           status: LEGACY_STATUS[o.status] ?? o.status,
         }));

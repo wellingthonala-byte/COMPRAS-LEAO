@@ -1,4 +1,4 @@
-import { Plus } from 'lucide-react';
+import { Inbox } from 'lucide-react';
 import { ReactNode } from 'react';
 
 /**
@@ -29,7 +29,7 @@ export function KanbanColumnShell({ label, count, dotClass, dotColor, bgClass, c
         {count === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-slate-300">
             <div className="w-10 h-10 rounded-full bg-white border border-slate-200 flex items-center justify-center mb-2">
-              <Plus size={18} className="text-slate-300" />
+              <Inbox size={18} className="text-slate-300" />
             </div>
             <p className="text-xs">Nenhum registro</p>
           </div>

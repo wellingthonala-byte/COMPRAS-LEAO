@@ -270,13 +270,15 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
                 </span>
                 <button
                   onClick={() => exportCSV(EXPORT_HEADERS, exportRows(rows), exportName('previsao-financeira'))}
-                  className="flex items-center gap-1 text-xs text-slate-600 hover:text-violet-700 border border-slate-200 rounded-lg px-2 py-1.5 transition-colors"
+                  disabled={rows.length === 0}
+                  className="flex items-center gap-1 text-xs text-slate-600 hover:text-violet-700 border border-slate-200 rounded-lg px-2 py-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Download size={12} /> CSV
                 </button>
                 <button
                   onClick={() => exportExcel(EXPORT_HEADERS, exportRows(rows), exportName('previsao-financeira'))}
-                  className="flex items-center gap-1 text-xs text-slate-600 hover:text-emerald-700 border border-slate-200 rounded-lg px-2 py-1.5 transition-colors"
+                  disabled={rows.length === 0}
+                  className="flex items-center gap-1 text-xs text-slate-600 hover:text-emerald-700 border border-slate-200 rounded-lg px-2 py-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <FileSpreadsheet size={12} /> Excel
                 </button>
@@ -331,6 +333,14 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
                     <tr
                       key={m.monthKey}
                       onClick={() => setSelectedMonth((cur) => (cur === m.monthKey ? null : m.monthKey))}
+                      tabIndex={0}
+                      role="button"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          setSelectedMonth((cur) => (cur === m.monthKey ? null : m.monthKey));
+                        }
+                      }}
                       className={`border-b border-slate-50 cursor-pointer transition-colors ${
                         selectedMonth === m.monthKey ? 'bg-violet-50' : 'hover:bg-slate-50'
                       }`}
@@ -475,7 +485,11 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
                     {logOpen ? 'Recolher' : 'Ver'}
                   </button>
                   <button
-                    onClick={() => { clearFinanceLog(); setLog([]); }}
+                    onClick={() => {
+                      if (!window.confirm('Isso apaga permanentemente o log de falhas de sincronização financeira. Confirma?')) return;
+                      clearFinanceLog();
+                      setLog([]);
+                    }}
                     className="text-xs text-red-500 hover:text-red-700"
                   >
                     Limpar

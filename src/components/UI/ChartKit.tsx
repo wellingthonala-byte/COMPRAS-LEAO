@@ -163,6 +163,9 @@ export function StackedBars({ data, segments, format, onSelect, selected }: {
               onMouseLeave={() => setHover(null)}
               onClick={onSelect ? () => onSelect(i) : undefined}
               className={onSelect ? 'cursor-pointer' : undefined}
+              role={onSelect ? 'button' : undefined}
+              tabIndex={onSelect ? 0 : undefined}
+              onKeyDown={(e) => { if (onSelect && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onSelect(i); } }}
             >
               <rect x={i * slot} y={0} width={slot} height={h} fill={selected === i ? '#f1f5f9' : 'transparent'} rx={6} />
               {d.values.map((v, s) => {

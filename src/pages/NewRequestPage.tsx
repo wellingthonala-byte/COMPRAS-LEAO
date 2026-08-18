@@ -29,8 +29,8 @@ const priorities: Priority[] = ['Não Urgente', 'Urgente', 'Máquina Parada'];
 const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
 const applications = ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'];
 
-function newItem(n: number): ItemForm {
-  return { id: String(n), description: '', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '' };
+function newItem(): ItemForm {
+  return { id: crypto.randomUUID(), description: '', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '' };
 }
 
 function getInitials(name: string): string {
@@ -47,16 +47,34 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
   const [priority, setPriority] = useState<Priority>('Não Urgente');
   const [observations, setObservations] = useState('');
   const [objectLink, setObjectLink] = useState('');
-  const [items, setItems] = useState<ItemForm[]>([newItem(1)]);
+  const [items, setItems] = useState<ItemForm[]>([newItem()]);
   const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const addItem = () => setItems((prev) => [...prev, newItem(prev.length + 1)]);
+  const addItem = () => setItems((prev) => [...prev, newItem()]);
   const removeItem = (id: string) => setItems((prev) => prev.filter((i) => i.id !== id));
   const updateItem = (id: string, field: keyof ItemForm, value: string | number) =>
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitting) return;
+    setFormError(null);
+
+    if (items.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0)) {
+      setFormError('Todos os itens devem ter uma quantidade válida maior que zero.');
+      return;
+    }
+
+    const trimmedLink = objectLink.trim();
+    const normalizedLink = normalizeUrl(objectLink);
+    if (trimmedLink !== '' && !normalizedLink) {
+      setFormError('O link informado não é uma URL válida — corrija ou deixe em branco.');
+      return;
+    }
+
+    setSubmitting(true);
     const now = new Date().toISOString();
     const initials = getInitials(requester);
     const number = generateRequestNumber(now, requests.map((r) => r.number));
@@ -81,7 +99,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
         observations: item.observations || undefined,
       })),
       observations: observations || undefined,
-      objectLink: normalizeUrl(objectLink) ?? undefined,
+      objectLink: normalizedLink ?? undefined,
       history: [{ id: `h-${Date.now()}`, date: now, user: requester, action: 'Solicitação criada', to: 'Nova Solicitação' }],
     };
     onAdd(newRequest);
@@ -235,14 +253,20 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
             </div>
           </div>
 
+          {formError && (
+            <div className="bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3">
+              {formError}
+            </div>
+          )}
+
           <div className="flex items-center justify-end gap-3 pb-8">
             <button type="button" onClick={() => navigate(-1)}
               className="px-5 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium border border-slate-200">
               Cancelar
             </button>
-            <button type="submit"
-              className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200">
-              <Plus size={15} /> Criar Solicitação
+            <button type="submit" disabled={submitting}
+              className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200 disabled:opacity-60 disabled:cursor-not-allowed">
+              <Plus size={15} /> {submitting ? 'Criando...' : 'Criar Solicitação'}
             </button>
           </div>
         </form>

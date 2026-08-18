@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ShoppingCart, Eye, EyeOff } from 'lucide-react';
 import { AppUser, authenticate } from '../data/users';
 import { loginWithSupabase } from '../lib/backend';
@@ -13,6 +13,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => () => { if (timeoutRef.current) clearTimeout(timeoutRef.current); }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +37,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
 
     // Nome de usuário → autenticação local (usuários de teste)
-    setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       const user = authenticate(input, password);
       if (user) {
         onLogin(user);
@@ -83,6 +86,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
                   {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}

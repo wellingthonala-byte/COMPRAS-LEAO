@@ -1,4 +1,4 @@
-import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut, ShieldCheck, PiggyBank } from 'lucide-react';
+import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut, ShieldCheck, PiggyBank, PlusCircle } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { AppUser, canViewFinance } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
@@ -7,6 +7,7 @@ import { colorFromInitials } from '../../utils/colors';
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
   { icon: Kanban, label: 'Kanban', to: '/' },
+  { icon: PlusCircle, label: 'Nova Solicitação', to: '/nova-solicitacao' },
   { icon: ClipboardList, label: 'Ordens de Serviço', to: '/ordens' },
   { icon: PiggyBank, label: 'Financeiro', to: '/financeiro', financeOnly: true },
   { icon: BarChart3, label: 'Relatórios', to: '/relatorios' },
@@ -49,7 +50,7 @@ export function Sidebar({ currentUser, onLogout }: SidebarProps) {
           >
             {({ isActive }) => (
               <>
-                <Icon className={`w-4.5 h-4.5 ${isActive ? 'text-violet-600' : 'text-slate-400'}`} size={18} />
+                <Icon className={isActive ? 'text-violet-600' : 'text-slate-400'} size={18} />
                 {label}
               </>
             )}

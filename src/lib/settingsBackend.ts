@@ -5,7 +5,7 @@ import { Role } from '../data/users';
 function withTimeout<T>(p: PromiseLike<T>, ms = 15000): Promise<T> {
   return Promise.race([
     Promise.resolve(p),
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('O servidor demorou para responder. Tente novamente.')), ms)),
   ]);
 }
 
@@ -120,6 +120,7 @@ export function dbRolesFor(role: Role): string[] {
     case 'comprador': return ['compras'];
     case 'financeiro': return ['financeiro'];
     case 'solicitante': return ['solicitante'];
+    default: return [];
   }
 }
 

@@ -71,9 +71,12 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   // Apenas o comprador pode cancelar solicitações
   const canCancel = !isCancelled && !isFinalized && currentUser.role === 'comprador';
 
-  const [approvalError] = useState('');
+  const [approvalError, setApprovalError] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [supplierValueError, setSupplierValueError] = useState('');
+  const [itemEditError, setItemEditError] = useState('');
 
   const [editingSupplier, setEditingSupplier] = useState(false);
   const [objectionItemId, setObjectionItemId] = useState<string | null>(null);
@@ -129,6 +132,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
 
   const handleStartEditItem = (item: import('../../types').Item) => {
     setEditingItemId(item.id);
+    setItemEditError('');
     setItemDraft({
       description: item.description,
       quantity: item.quantity,
@@ -139,6 +143,14 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   };
 
   const handleSaveItemEdit = (itemId: string) => {
+    const descriptionValid = !!String(itemDraft.description ?? '').trim();
+    const quantityNum = Number(itemDraft.quantity);
+    const quantityValid = Number.isFinite(quantityNum) && quantityNum > 0;
+    if (!descriptionValid || !quantityValid) {
+      setItemEditError(!descriptionValid ? 'Descrição é obrigatória.' : 'Quantidade deve ser maior que zero.');
+      return;
+    }
+    setItemEditError('');
     const original = request.items.find((i) => i.id === itemId);
     const changes: string[] = [];
     if (original) {
@@ -214,7 +226,16 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   };
 
   const handleSaveSupplier = () => {
-    const newValue = supplierDraft.value ? parseFloat(supplierDraft.value.replace(',', '.')) : undefined;
+    let newValue: number | undefined;
+    if (supplierDraft.value) {
+      const parsed = parseFloat(supplierDraft.value.replace(/\./g, '').replace(',', '.'));
+      if (isNaN(parsed)) {
+        setSupplierValueError('Valor inválido. Use o formato 1.500,00.');
+        return;
+      }
+      newValue = parsed;
+    }
+    setSupplierValueError('');
     // Alterações que mexem na projeção financeira entram no histórico: o valor
     // aprovado e a data-base do parcelamento derivam desses três campos.
     const changes: string[] = [];
@@ -271,7 +292,13 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => printPurchaseRequest(request, currentUser.name)} title="Imprimir / Gerar PDF"
+            <button onClick={() => {
+              try {
+                printPurchaseRequest(request, currentUser.name);
+              } catch {
+                window.alert('Seu navegador bloqueou a janela de impressão. Permita pop-ups para este site e tente novamente.');
+              }
+            }} title="Imprimir / Gerar PDF"
               className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 rounded-lg transition-colors">
               <Printer size={13} /> Imprimir
             </button>
@@ -372,7 +399,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                 </div>
                 {editingSupplier ? (
                   <div className="flex gap-2">
-                    <button onClick={() => setEditingSupplier(false)} className="text-xs text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 transition-colors">
+                    <button onClick={() => { setEditingSupplier(false); setSupplierValueError(''); }} className="text-xs text-slate-500 hover:text-slate-700 font-medium flex items-center gap-1 transition-colors">
                       <X size={11} /> Cancelar
                     </button>
                     <button onClick={handleSaveSupplier} className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 transition-colors">
@@ -399,6 +426,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                       <input value={supplierDraft.value} onChange={(e) => setSupplierDraft(d => ({ ...d, value: e.target.value }))}
                         placeholder="0,00" type="text"
                         className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                      {supplierValueError && <p className="text-xs text-red-600 mt-1">{supplierValueError}</p>}
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
@@ -516,7 +544,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                       <PriorityBadge priority={item.priority} />
                       {openObjections.length > 0 && (
                         <span className="flex items-center gap-1 text-xs text-orange-600 font-medium bg-orange-100 px-2 py-0.5 rounded-full border border-orange-200">
-                          <AlertCircle size={10} /> {openObjections.length} objeção pendente
+                          <AlertCircle size={10} /> {openObjections.length} objeção pendente{openObjections.length > 1 ? 's' : ''}
                         </span>
                       )}
                     </div>
@@ -569,12 +597,14 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                             onChange={(e) => setItemDraft((d) => ({ ...d, observations: e.target.value }))}
                             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none bg-white" />
                         </div>
+                        {itemEditError && <p className="text-xs text-red-600">{itemEditError}</p>}
                         <div className="flex gap-2">
                           <button onClick={() => handleSaveItemEdit(item.id)}
-                            className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                            disabled={!String(itemDraft.description ?? '').trim() || !(Number.isFinite(Number(itemDraft.quantity)) && Number(itemDraft.quantity) > 0)}
+                            className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
                             <Save size={12} /> Salvar Correção
                           </button>
-                          <button onClick={() => { setEditingItemId(null); setItemDraft({}); }}
+                          <button onClick={() => { setEditingItemId(null); setItemDraft({}); setItemEditError(''); }}
                             className="text-xs text-slate-500 hover:text-slate-700 px-2 py-1.5 rounded-lg transition-colors">
                             Cancelar
                           </button>
@@ -644,7 +674,8 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                         />
                         <div className="flex gap-2">
                           <button onClick={() => handleAddObjection(item.id)}
-                            className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
+                            disabled={!objectionText.trim()}
+                            className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-3 py-1.5 rounded-lg text-xs font-medium transition-colors">
                             <MessageSquarePlus size={12} /> Registrar
                           </button>
                           <button onClick={() => { setObjectionItemId(null); setObjectionText(''); }}
@@ -707,8 +738,14 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   </div>
                   {approvalError && <p className="text-xs text-red-600">{approvalError}</p>}
                   <button
-                    onClick={() => onApprove(request.id, currentUser.name, currentUser.id)}
-                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    onClick={() => {
+                      if (isSubmitting) return;
+                      setApprovalError('');
+                      setIsSubmitting(true);
+                      onApprove(request.id, currentUser.name, currentUser.id);
+                    }}
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                   >
                     <ShieldCheck size={14} />
                     Confirmar Aprovação
@@ -787,8 +824,9 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                     </div>
                   </div>
                   <button
-                    onClick={() => onApproveValue(request.id)}
-                    className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+                    onClick={() => { if (isSubmitting) return; setIsSubmitting(true); onApproveValue(request.id); }}
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
                   >
                     <PiggyBank size={14} />
                     Aprovar Valor e Projetar Parcelas
@@ -866,8 +904,12 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
               />
               <div className="flex items-center gap-2 mt-2">
                 <button
-                  onClick={() => { if (cancelReason.trim()) onCancel(request.id, cancelReason.trim()); }}
-                  disabled={!cancelReason.trim()}
+                  onClick={() => {
+                    if (isSubmitting || !cancelReason.trim()) return;
+                    setIsSubmitting(true);
+                    onCancel(request.id, cancelReason.trim());
+                  }}
+                  disabled={!cancelReason.trim() || isSubmitting}
                   className="bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-xs font-medium transition-colors"
                 >
                   Confirmar Cancelamento
@@ -919,21 +961,27 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
               <div className="flex items-center gap-2">
                 {canSkipNext && (
                   <button
-                    onClick={() => onSkipStatus(request.id)}
+                    onClick={() => { if (isSubmitting) return; setIsSubmitting(true); onSkipStatus(request.id); }}
+                    disabled={isSubmitting}
                     title={`Pular etapa "${nextStatus}" — não aplicável a este pedido`}
-                    className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
+                    className="flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
                   >
                     Pular "{nextStatus}"
                   </button>
                 )}
                 <button
-                  onClick={() => onAdvanceStatus(request.id)}
-                  className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
+                  onClick={() => { if (isSubmitting) return; setIsSubmitting(true); onAdvanceStatus(request.id); }}
+                  disabled={isSubmitting}
+                  className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
                 >
                   <ArrowRight size={15} />
                   Avançar para {STATUS_ORDER[currentIdx + 1]}
                 </button>
               </div>
+            ) : canAdvance ? (
+              <span className="flex items-center gap-2 bg-slate-100 text-slate-500 px-4 py-2 rounded-lg text-sm font-medium">
+                Apenas o comprador pode avançar esta etapa
+              </span>
             ) : null}
           </div>
         </div>

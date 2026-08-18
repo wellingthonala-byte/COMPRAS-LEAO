@@ -131,8 +131,14 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 2500); };
   const refresh = () => {
     setOrders(loadServiceOrders());
-    fetchServiceOrders().then((remote) => { if (remote !== null) setOrders(remote); });
-    showToast('Dados atualizados');
+    fetchServiceOrders().then((remote) => {
+      if (remote !== null) {
+        setOrders(remote);
+        showToast('Dados atualizados');
+      } else {
+        showToast('Não foi possível atualizar — sem conexão com o servidor');
+      }
+    });
   };
 
   // O.S. reais do Supabase ao abrir o Dashboard
@@ -189,6 +195,15 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
     }
     return out;
   };
+  const dayValueSeries = (rs: { createdAt: string; value?: number }[], days: number): number[] => {
+    const out: number[] = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      out.push(rs.filter((r) => r.createdAt.slice(0, 10) === key).reduce((s, r) => s + (r.value ?? 0), 0));
+    }
+    return out;
+  };
   const delta = (cur: number, prev: number): number | null => {
     if (prev === 0) return cur > 0 ? 100 : null;
     return Math.round(((cur - prev) / prev) * 100);
@@ -213,7 +228,7 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
       { label: 'Finalizadas', value: String(finalized.length), icon: CheckCircle2, color: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-600', d: null, spark: daySeries(finalized, 14), to: '/', tip: 'Solicitações concluídas com sucesso.' },
       { label: 'Máquina Parada', value: String(machine.length), icon: AlertTriangle, color: '#dc2626', bg: 'bg-red-50', text: 'text-red-600', d: null, invert: true, spark: daySeries(machine, 14), to: '/', tip: 'Prioridade máxima em aberto — atenção imediata.' },
       { label: 'Em Atraso', value: String(overdue.length), icon: Clock, color: '#ea580c', bg: 'bg-orange-50', text: 'text-orange-600', d: null, invert: true, spark: daySeries(overdue, 14), to: '/', tip: 'Solicitações abertas com previsão de entrega vencida.' },
-      { label: 'Valor Total', value: fmtBRL(totalValue), icon: DollarSign, color: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-700', d: null, spark, to: '/relatorios', tip: 'Soma dos valores das compras registradas. Clique para os Relatórios.' },
+      { label: 'Valor Total', value: fmtBRL(totalValue), icon: DollarSign, color: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-700', d: null, spark: dayValueSeries(filtered, 14), to: '/relatorios', tip: 'Soma dos valores das compras registradas. Clique para os Relatórios.' },
     ];
   }, [filtered]);
 
@@ -436,6 +451,7 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
           {kpis.map((k) => {
             const Icon = k.icon;
             const positive = k.d !== null && ((k as { invert?: boolean }).invert ? k.d < 0 : k.d > 0);
+            const neutral = k.d === 0;
             return (
               <button key={k.label} onClick={() => navigate(k.to)}
                 className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all text-left group relative">
@@ -449,7 +465,7 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
                 <div className="flex items-center justify-between mt-0.5">
                   <p className="text-[11px] text-slate-500">{k.label}</p>
                   {k.d !== null ? (
-                    <span className={`flex items-center gap-0.5 text-[10px] font-semibold ${positive ? 'text-emerald-600' : 'text-red-500'}`}>
+                    <span className={`flex items-center gap-0.5 text-[10px] font-semibold ${neutral ? 'text-slate-400' : positive ? 'text-emerald-600' : 'text-red-500'}`}>
                       {k.d > 0 ? <ArrowUpRight size={10} /> : k.d < 0 ? <ArrowDownRight size={10} /> : <Minus size={10} />}
                       {Math.abs(k.d)}%
                     </span>

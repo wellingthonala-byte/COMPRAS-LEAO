@@ -38,7 +38,7 @@ export function KanbanCard({ request, onClick }: KanbanCardProps) {
       </div>
 
       <p className="text-sm font-semibold text-slate-800 mb-1 line-clamp-2">
-        {firstItem?.description}
+        {firstItem?.description ?? 'Sem itens'}
       </p>
       {request.items.length > 1 && (
         <p className="text-xs text-slate-400 mb-1">+{request.items.length - 1} item(s)</p>

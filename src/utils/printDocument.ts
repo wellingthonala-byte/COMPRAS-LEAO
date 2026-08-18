@@ -287,7 +287,7 @@ function renderHTML(doc: PrintDoc): string {
 
 function openPrintWindow(doc: PrintDoc): void {
   const w = window.open('', '_blank', 'width=900,height=1000');
-  if (!w) return;
+  if (!w) throw new Error('popup-blocked');
   w.document.write(renderHTML(doc));
   w.document.close();
   w.focus();

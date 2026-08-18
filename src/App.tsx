@@ -30,10 +30,24 @@ function loadRequests(): PurchaseRequest[] {
   return [];
 }
 
+function isValidAppUser(parsed: unknown): parsed is AppUser {
+  return (
+    typeof parsed === 'object' &&
+    parsed !== null &&
+    typeof (parsed as { id?: unknown }).id === 'string' &&
+    typeof (parsed as { role?: unknown }).role === 'string' &&
+    ['gestor', 'solicitante', 'comprador', 'financeiro'].includes(
+      (parsed as { role: string }).role
+    )
+  );
+}
+
 function loadUser(): AppUser | null {
   try {
     const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as AppUser) : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return isValidAppUser(parsed) ? parsed : null;
   } catch {
     return null;
   }

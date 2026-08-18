@@ -75,7 +75,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
 
   /** Entrada no histórico com a assinatura padrão do projeto. */
   const entry = (action: string, from?: Status, to?: Status): HistoryEntry => ({
-    id: `h-${Date.now()}`,
+    id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     date: new Date().toISOString(),
     user: currentUser.name,
     action,
@@ -232,6 +232,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   };
 
   const handleApprove = (id: string, approverName: string, approvalId: string) => {
+    const req = requests.find((r) => r.id === id);
     setRequests((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
@@ -243,7 +244,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
           history: [
             ...r.history,
             {
-              id: `h-${Date.now()}`,
+              id: `h-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               date: new Date().toISOString(),
               user: approverName,
               action: `Aprovado pelo gestor (ID: ${approvalId})`,
@@ -254,6 +255,15 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
         };
       })
     );
+
+    if (req) {
+      sendNotification({
+        title: `✅ ${req.number} — Aprovado pelo gestor`,
+        message: `${approverName} aprovou o mérito da solicitação de ${req.requester} (${req.sector}).`,
+        priority: req.priority === 'Máquina Parada' ? 4 : 3,
+        tags: ['white_check_mark'],
+      });
+    }
   };
 
   const hasFilters = search || filterPriority || filterSector;
