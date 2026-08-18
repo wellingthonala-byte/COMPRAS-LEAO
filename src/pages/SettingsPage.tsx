@@ -460,6 +460,17 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
       )}
 
       <div className="flex-1 pt-16 px-4 md:px-6 py-6">
+        {currentUser.authSource === 'local' && (
+          <div className="mb-4 flex items-start gap-2.5 bg-red-50 border border-red-200 text-red-800 text-sm rounded-xl px-4 py-3">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+            <p>
+              <strong>Você entrou com um usuário de teste (login local), não com seu e-mail.</strong> Nada que
+              você alterar aqui — dados da empresa, CNPJ, aprovação, etc. — chega a ser salvo no servidor:
+              fica só neste navegador e some assim que a página recarregar os dados reais. Saia e entre de
+              novo usando seu e-mail para que as configurações sejam salvas de verdade.
+            </p>
+          </div>
+        )}
         <div className="flex flex-col md:flex-row gap-5 items-start">
 
           {/* Sidebar interna */}

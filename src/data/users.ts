@@ -21,6 +21,13 @@ export interface AppUser {
   initials: string;
   active?: boolean;
   lastLogin?: string;
+  /**
+   * 'local': logou por nome de usuário/senha de teste, sem sessão real no
+   * Supabase — nada que essa pessoa alterar em Configurações (nem em mais
+   * nada) chega ao servidor, fica só no navegador dela e some no próximo
+   * carregamento vindo do banco. 'supabase': sessão real, tudo sincroniza.
+   */
+  authSource?: 'local' | 'supabase';
 }
 
 const USERS_KEY = 'compras-leao-users';
@@ -52,7 +59,7 @@ export function authenticate(name: string, password: string): AppUser | null {
     (u) => u.name.toLowerCase() === name.toLowerCase() && u.password === password && u.active !== false
   ) ?? null;
   if (user) {
-    const stamped = { ...user, lastLogin: new Date().toISOString() };
+    const stamped = { ...user, lastLogin: new Date().toISOString(), authSource: 'local' as const };
     saveUsers(users.map((u) => (u.id === user.id ? stamped : u)));
     return stamped;
   }

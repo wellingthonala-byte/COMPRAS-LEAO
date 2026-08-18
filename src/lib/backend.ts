@@ -512,6 +512,7 @@ export async function loginWithSupabase(email: string, password: string): Promis
     initials: name.trim().slice(0, 2).toUpperCase(),
     active: true,
     lastLogin: new Date().toISOString(),
+    authSource: 'supabase',
   };
 }
 
