@@ -14,21 +14,21 @@ import { countsAsPurchase } from '../lib/financeSync';
 /* ------------------------------------------------------------------ */
 /* Paleta categórica validada (ordem fixa, CVD-safe)                    */
 /* ------------------------------------------------------------------ */
-const CAT = ['#7c3aed', '#059669', '#d97706', '#2563eb', '#dc2626', '#0891b2'];
+const CAT = ['#435A79', '#059669', '#d97706', '#2563eb', '#dc2626', '#0891b2'];
 
 const STATUS_ORDER: Status[] = [
   'Nova Solicitação', 'Em Aprovação', 'Em Cotação', 'Comprado',
   'Em Rota', 'Em Serviço', 'Disponível para Retirada', 'Finalizado', 'Cancelada',
 ];
 const STATUS_COLORS: Record<string, string> = {
-  'Nova Solicitação': '#7c3aed',
+  'Nova Solicitação': '#435A79',
   'Em Aprovação': '#6366f1',
   'Em Cotação': '#2563eb',
   'Comprado': '#059669',
   'Em Rota': '#d97706',
   'Em Serviço': '#ea580c',
   'Disponível para Retirada': '#64748b',
-  'Finalizado': '#8b5cf6',
+  'Finalizado': '#5D7295',
   'Cancelada': '#dc2626',
 };
 
@@ -185,21 +185,21 @@ function LineChart({ data, format }: { data: { label: string; value: number }[];
       <svg width="100%" viewBox={`0 0 ${w} ${h}`} className="overflow-visible" role="img" aria-label="Gráfico de linha">
         <defs>
           <linearGradient id="repLineGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.15" />
-            <stop offset="100%" stopColor="#7c3aed" stopOpacity="0" />
+            <stop offset="0%" stopColor="#435A79" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="#435A79" stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0.25, 0.5, 0.75].map((f) => (
           <line key={f} x1={padX} x2={w - padX} y1={padY + f * (h - padY * 2)} y2={padY + f * (h - padY * 2)} stroke="#f1f5f9" strokeWidth="1" />
         ))}
         <path d={area} fill="url(#repLineGrad)" />
-        <path d={path} stroke="#7c3aed" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <path d={path} stroke="#435A79" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
         {pts.map((p, i) => (
           <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)}>
             <circle cx={p.x} cy={p.y} r="10" fill="transparent" />
-            <circle cx={p.x} cy={p.y} r={hover === i ? 5 : 3.5} fill="white" stroke="#7c3aed" strokeWidth="2" className="transition-all" />
+            <circle cx={p.x} cy={p.y} r={hover === i ? 5 : 3.5} fill="white" stroke="#435A79" strokeWidth="2" className="transition-all" />
             {hover === i && (
-              <text x={p.x} y={p.y - 9} textAnchor="middle" fontSize="10" fontWeight="700" fill="#7c3aed">
+              <text x={p.x} y={p.y - 9} textAnchor="middle" fontSize="10" fontWeight="700" fill="#435A79">
                 {format ? format(data[i].value) : data[i].value}
               </text>
             )}
@@ -216,7 +216,7 @@ function LineChart({ data, format }: { data: { label: string; value: number }[];
   );
 }
 
-function BarChart({ data, color = '#7c3aed', format }: { data: { label: string; value: number }[]; color?: string; format?: (v: number) => string }) {
+function BarChart({ data, color = '#435A79', format }: { data: { label: string; value: number }[]; color?: string; format?: (v: number) => string }) {
   const [hover, setHover] = useState<number | null>(null);
   if (data.length === 0 || data.every((d) => d.value === 0)) return <EmptyChart />;
   const w = 320, h = 130, padY = 16;

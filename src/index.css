@@ -8,6 +8,17 @@
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background-color: #F8FAFC;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Números tabulares em telas financeiras — colunas de valores alinhadas
+   e com o peso mais técnico da Plex Mono, sem exigir trocar classe em
+   cada célula da tabela. */
+.font-mono,
+table td.tabular-nums,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }

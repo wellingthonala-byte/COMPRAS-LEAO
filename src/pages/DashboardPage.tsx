@@ -29,12 +29,12 @@ const exportBRL = (v: number) => v.toFixed(2).replace('.', ',');
 const isActive = (r: PurchaseRequest) => r.status !== 'Finalizado' && r.status !== 'Cancelada';
 
 const STATUS_COLORS: Record<string, string> = {
-  'Nova Solicitação': '#7c3aed', 'Em Aprovação': '#6366f1', 'Em Cotação': '#2563eb',
+  'Nova Solicitação': '#435A79', 'Em Aprovação': '#6366f1', 'Em Cotação': '#2563eb',
   'Comprado': '#059669', 'Em Rota': '#d97706', 'Em Serviço': '#ea580c',
-  'Disponível para Retirada': '#64748b', 'Finalizado': '#8b5cf6', 'Cancelada': '#dc2626',
+  'Disponível para Retirada': '#64748b', 'Finalizado': '#5D7295', 'Cancelada': '#dc2626',
 };
 const OS_STATUS_COLORS: Record<string, string> = {
-  'Aberta': '#64748b', 'Aguardando Aprovação': '#d97706', 'Programada': '#7c3aed',
+  'Aberta': '#64748b', 'Aguardando Aprovação': '#d97706', 'Programada': '#435A79',
   'Em Execução': '#0284c7', 'Pausada': '#f97316', 'Finalizada': '#059669',
   'Faturada': '#0d9488', 'Cancelada': '#dc2626',
 };
@@ -239,7 +239,7 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
     const totalValue = purchased.reduce((s, r) => s + (r.value ?? 0), 0);
     const spark = daySeries(filtered, 14);
     return [
-      { label: 'Total de Solicitações', value: String(filtered.length), icon: Package, color: '#7c3aed', bg: 'bg-violet-50', text: 'text-violet-600', d: delta(last7.length, prev7.length), spark, to: '/', tip: 'Total no filtro atual. Variação: últimos 7 dias vs. 7 anteriores. Clique para abrir o Kanban.' },
+      { label: 'Total de Solicitações', value: String(filtered.length), icon: Package, color: '#435A79', bg: 'bg-violet-50', text: 'text-violet-600', d: delta(last7.length, prev7.length), spark, to: '/', tip: 'Total no filtro atual. Variação: últimos 7 dias vs. 7 anteriores. Clique para abrir o Kanban.' },
       { label: 'Em Aberto', value: String(open.length), icon: Activity, color: '#2563eb', bg: 'bg-blue-50', text: 'text-blue-600', d: delta(last7.filter(isActive).length, prev7.filter(isActive).length), spark: daySeries(open, 14), to: '/', tip: 'Solicitações ainda não finalizadas nem canceladas.' },
       { label: 'Finalizadas', value: String(finalized.length), icon: CheckCircle2, color: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-600', d: null, spark: daySeries(finalized, 14), to: '/', tip: 'Solicitações concluídas com sucesso.' },
       { label: 'Máquina Parada', value: String(machine.length), icon: AlertTriangle, color: '#dc2626', bg: 'bg-red-50', text: 'text-red-600', d: null, invert: true, spark: daySeries(machine, 14), to: '/', tip: 'Prioridade máxima em aberto — atenção imediata.' },

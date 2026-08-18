@@ -89,7 +89,7 @@ const DB_ROLES: { key: string; label: string }[] = [
 
 const DEFAULT_SETTINGS: AppSettings = {
   company: { nome: 'Compras Leão', razaoSocial: '', fantasia: '', cnpj: '', ie: '', endereco: '', cidade: '', estado: '', cep: '', pais: 'Brasil', telefone: '', whatsapp: '', email: '', website: '', logoUrl: '' },
-  branding: { primaryColor: '#7c3aed', secondaryColor: '#0f172a', theme: 'claro', font: 'Inter' },
+  branding: { primaryColor: '#435A79', secondaryColor: '#0f172a', theme: 'claro', font: 'IBM Plex Sans' },
   approval: { niveis: 1, aprovacaoPorValor: false, valorAlcada: '', aprovacaoPorSetor: false, autoAprovarAbaixo: '', aprovacaoObrigatoria: true },
   purchasing: { numeracaoAutomatica: true, prefixo: '#', slaHorasMaquinaParada: '4', slaHorasUrgente: '24', prioridadePadrao: 'Não Urgente', categorias: ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'], centrosCusto: ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'], tiposSolicitacao: ['Material', 'Serviço'] },
   suppliers: { categorias: [], criterioPrazo: 40, criterioPreco: 40, criterioQualidade: 20, prazoAlvoDias: '7', homologacaoObrigatoria: false, bloqueados: [] },
@@ -688,7 +688,7 @@ function BrandingSection({ settings, patch }: { settings: AppSettings; patch: Pa
               <label className="block text-xs font-medium text-slate-600 mb-1">Fonte</label>
               <select value={b.font} onChange={(e) => patch('branding', { font: e.target.value })}
                 className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">
-                {['Inter', 'Roboto', 'Open Sans', 'Poppins', 'Lato'].map((f) => <option key={f}>{f}</option>)}
+                {['IBM Plex Sans', 'Inter', 'Roboto', 'Open Sans', 'Poppins', 'Lato'].map((f) => <option key={f}>{f}</option>)}
               </select>
             </div>
           </div>

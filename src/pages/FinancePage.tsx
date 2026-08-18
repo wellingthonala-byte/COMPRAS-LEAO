@@ -31,7 +31,7 @@ const STATUSES: InstallmentStatus[] = ['Previsto', 'Confirmado', 'Pago', 'Cancel
 
 const SEGMENTS = [
   { key: 'confirmado', label: 'Confirmado', color: '#0d9488' },
-  { key: 'previsto', label: 'Previsto', color: '#a78bfa' },
+  { key: 'previsto', label: 'Previsto', color: '#8398B8' },
   { key: 'pago', label: 'Pago', color: '#059669' },
 ];
 

@@ -320,7 +320,7 @@ export function printPurchaseRequest(r: PurchaseRequest, generatedBy: string): v
   const totalQty = Math.max(r.items.reduce((s, i) => s + i.quantity, 0), 1);
   openPrintWindow({
     docTitle: r.supplier ? 'Pedido de Compra' : 'Solicitação de Compra',
-    accent: '#7c3aed',
+    accent: '#435A79',
     number: r.number,
     issueDate: new Date(r.createdAt).toLocaleDateString('pt-BR'),
     status: r.status,
@@ -410,7 +410,7 @@ export function printServiceOrder(os: ServiceOrder, generatedBy: string): void {
 
   openPrintWindow({
     docTitle: 'Ordem de Serviço',
-    accent: '#7c3aed',
+    accent: '#435A79',
     number: os.number,
     issueDate: new Date(os.openedAt).toLocaleDateString('pt-BR'),
     status: os.status,
