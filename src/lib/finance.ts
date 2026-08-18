@@ -57,6 +57,21 @@ export function diffDays(fromISO: string, toISO: string): number {
   return Math.round((utcOf(toISO) - utcOf(fromISO)) / DAY_MS);
 }
 
+/**
+ * Dia-calendário (YYYY-MM-DD) em America/Sao_Paulo a partir de um instante
+ * ISO (timestamp com hora, ex.: `approvedAt`, `now`). Diferente de
+ * `.slice(0, 10)`, que pega o dia em UTC: entre 21h e 23h59 no horário de
+ * Brasília (UTC-3) o instante já virou o dia UTC seguinte, e usar UTC
+ * nessas janelas adianta a data-base — e o vencimento — em um dia inteiro.
+ *
+ * Só serve para TIMESTAMPS. Uma data pura vinda de `<input type="date">`
+ * (ex.: fiscalNoteDate) já é um dia de calendário e não deve passar por
+ * aqui — continua com `.slice(0, 10)`.
+ */
+export function localDayOf(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+}
+
 /* ------------------------------------------------------------------ */
 /* Feriados                                                            */
 /* ------------------------------------------------------------------ */
@@ -264,6 +279,14 @@ export interface RecalcInstallmentsInput {
   now: string;
   /** Registrada na parcela quando o valor comprado divergiu do aprovado. */
   divergenceNote?: string;
+  /**
+   * true quando o chamador reavaliou a divergência com informação completa
+   * (valor aprovado conhecido) — nesse caso `divergenceNote` é gravado tal
+   * qual, inclusive `undefined`, apagando uma nota antiga que não vale mais.
+   * Omitido/false preserva a nota anterior quando a nova vier `undefined`,
+   * para o caso do chamador não ter como saber se a divergência ainda existe.
+   */
+  divergenceKnown?: boolean;
   idFactory?: () => string;
 }
 
@@ -280,7 +303,7 @@ export interface RecalcInstallmentsInput {
 export function recalcInstallments(input: RecalcInstallmentsInput): Installment[] {
   const {
     existing, requestId, total, terms, baseDate, baseDateSource, status,
-    holidays, now, divergenceNote, idFactory = newId,
+    holidays, now, divergenceNote, divergenceKnown = false, idFactory = newId,
   } = input;
 
   const days = normalizeDays(terms.days);
@@ -292,9 +315,10 @@ export function recalcInstallments(input: RecalcInstallmentsInput): Installment[
   const paidNumbers = new Set(
     existing.filter((i) => i.status === 'Pago' && i.number <= days.length).map((i) => i.number)
   );
-  const paidSum = sumAmounts(
-    existing.filter((i) => paidNumbers.has(i.number)).map((i) => i.amount)
-  );
+  // Toda parcela paga desconta do total a redistribuir — inclusive a que ficou
+  // fora da nova contagem (number > days.length): ela continua Paga e viva no
+  // bloco de excedentes, então o dinheiro dela já não está mais livre.
+  const paidSum = sumAmounts(existing.filter((i) => i.status === 'Pago').map((i) => i.amount));
 
   const activePositions = days.map((_, idx) => idx + 1).filter((n) => !paidNumbers.has(n));
   const activeAmounts = splitAmount(Math.max(0, total - paidSum), activePositions.length);
@@ -312,6 +336,12 @@ export function recalcInstallments(input: RecalcInstallmentsInput): Installment[
     const amount = amountByNumber.get(number) ?? 0;
 
     if (prev) {
+      // Uma posição dentro da nova contagem de parcelas está sempre ativa,
+      // mesmo que tenha ficado Cancelado num recálculo anterior (quando era
+      // excedente, com n > days.length de então). Preservar 'Cancelado' aqui
+      // faria essa fatia do total sumir da projeção para sempre — a
+      // preservação do cancelamento é papel exclusivo do bloco de excedentes
+      // logo abaixo, para posições que continuam fora da nova contagem.
       return {
         ...prev,
         count: days.length,
@@ -320,9 +350,10 @@ export function recalcInstallments(input: RecalcInstallmentsInput): Installment[
         offsetDays: offset,
         baseDate,
         baseDateSource,
-        status: prev.status === 'Cancelado' ? 'Cancelado' : status,
+        status,
+        cancelledAt: undefined,
         paymentTermsLabel: label,
-        divergenceNote: divergenceNote ?? prev.divergenceNote,
+        divergenceNote: divergenceKnown ? divergenceNote : (divergenceNote ?? prev.divergenceNote),
         updatedAt: now,
         // origin preservado de propósito
       };
@@ -369,7 +400,10 @@ export function cancelInstallments(existing: Installment[], now: string, note: s
     ...i,
     status: 'Cancelado' as InstallmentStatus,
     cancelledAt: now,
-    divergenceNote: note,
+    // motivo do cancelamento vai num campo próprio: divergenceNote é a
+    // auditoria de valor aprovado × comprado, e reusá-lo aqui apagaria essa
+    // história (ex.: pedido com divergência de valor que depois é cancelado).
+    cancelReason: note,
     updatedAt: now,
   }));
 }
@@ -429,5 +463,5 @@ export function chooseConfirmedBaseDate(fiscalNoteDate: string | undefined, purc
   if (isValidISODate(fiscalNoteDate)) {
     return { baseDate: fiscalNoteDate!.slice(0, 10), source: 'nota_fiscal', provisional: false };
   }
-  return { baseDate: purchasedAtISO.slice(0, 10), source: 'comprado_provisorio', provisional: true };
+  return { baseDate: localDayOf(purchasedAtISO), source: 'comprado_provisorio', provisional: true };
 }

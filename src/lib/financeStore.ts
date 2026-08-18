@@ -170,14 +170,39 @@ export async function saveInstallments(changed: Installment[], requestNumber = '
   }
 }
 
+let initPromise: Promise<'online' | 'offline'> | null = null;
+
 /**
  * Carrega as parcelas do servidor. Em caso de falha mantém o cache local.
  * Drena a fila antes de ler, para não sobrescrever pendências com dados velhos.
+ *
+ * Idempotente: chamadas repetidas (ex.: efeitos de React remontando) devolvem
+ * a mesma promise em vez de disparar outra carga.
  */
-export async function initInstallments(): Promise<'online' | 'offline'> {
-  await flushQueue();
-  const remote = await fetchInstallments();
-  if (remote === null) return 'offline';
-  commit(remote);
-  return 'online';
+export function initInstallments(): Promise<'online' | 'offline'> {
+  if (!initPromise) {
+    initPromise = (async () => {
+      await flushQueue();
+      const remote = await fetchInstallments();
+      if (remote === null) return 'offline' as const;
+      commit(remote);
+      return 'online' as const;
+    })();
+  }
+  return initPromise;
+}
+
+/**
+ * Resolve quando a carga inicial do cache (ou a tentativa dela) terminou —
+ * `installmentsOf`/`getInstallments` só refletem o servidor depois disso.
+ *
+ * Nunca lança: se `initInstallments` ainda nem foi chamada (App.tsx dispara
+ * ela sem await), não há o que esperar e resolve na hora — mesma janela de
+ * corrida que já existia, não é este ponto que a introduz. Quem precisa da
+ * garantia forte é código que roda depois que a app já montou, como a
+ * reconciliação do Financeiro.
+ */
+export function installmentsReady(): Promise<void> {
+  if (!initPromise) return Promise.resolve();
+  return initPromise.then(() => undefined, () => undefined);
 }

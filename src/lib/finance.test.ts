@@ -314,6 +314,53 @@ describe('recalcInstallments — data-base pela nota fiscal', () => {
     expect(after.every((i) => i.count === 4)).toBe(true);
   });
 
+  it('Finding 6: reativa posição que tinha virado excedente cancelado, sem perder a fatia do valor', () => {
+    // 30/60/90 (R$9.000) encurtado para 30 dias (1x): #2 e #3 viram excedente
+    // Cancelado. A condição é corrigida de volta para 30/60/90: #2 e #3
+    // precisam voltar a ser ativas, não continuar Cancelado consumindo fatia.
+    const before = original();
+    const shortened = recalcInstallments({
+      existing: before, requestId: REQ, total: 9000, terms: { kind: 'dias', days: [30] },
+      baseDate: '2026-08-10', baseDateSource: 'nota_fiscal', status: 'Confirmado', holidays, now: NOW,
+    });
+    expect(shortened.slice(1).every((i) => i.status === 'Cancelado')).toBe(true);
+
+    const restored = recalcInstallments({
+      existing: shortened, requestId: REQ, total: 9000, terms: D306090,
+      baseDate: '2026-08-10', baseDateSource: 'nota_fiscal', status: 'Confirmado', holidays, now: NOW,
+    });
+    expect(restored).toHaveLength(3);
+    expect(restored.every((i) => i.status === 'Confirmado')).toBe(true);
+    expect(restored.every((i) => i.cancelledAt === undefined)).toBe(true);
+    expect(restored.map((i) => i.amount)).toEqual([3000, 3000, 3000]);
+    expect(sumAmounts(restored.map((i) => i.amount))).toBe(9000);
+  });
+
+  it('Finding 7: parcela paga fora da nova contagem não é contada duas vezes', () => {
+    // R$1.000 em 30/60/90/120 (R$250/parcela). #4 é antecipada e paga.
+    // Condição corrigida para 30/60: o que sobrou (R$750) deve se dividir só
+    // entre #1 e #2 — a soma de tudo que não está Cancelado tem que bater
+    // com o total do pedido.
+    const base = computeInstallments({
+      requestId: REQ, total: 1000, terms: { kind: 'dias', days: [30, 60, 90, 120] },
+      baseDate: '2026-08-10', baseDateSource: 'aprovacao_valor', holidays, now: NOW, idFactory: seqIds(),
+    });
+    const existing: Installment[] = [
+      base[0], base[1], base[2],
+      { ...base[3], status: 'Pago', paidAt: NOW, paidAmount: 250 },
+    ];
+
+    const after = recalcInstallments({
+      existing, requestId: REQ, total: 1000, terms: { kind: 'dias', days: [30, 60] },
+      baseDate: '2026-08-10', baseDateSource: 'nota_fiscal', status: 'Confirmado', holidays, now: NOW,
+    });
+
+    const naoCancelada = after.filter((i) => i.status !== 'Cancelado');
+    expect(sumAmounts(naoCancelada.map((i) => i.amount))).toBe(1000);
+    expect(after.find((i) => i.number === 4)!.status).toBe('Pago');
+    expect(after.find((i) => i.number === 3)!.status).toBe('Cancelado');
+  });
+
   it('não altera nada com condição vazia', () => {
     const before = original();
     const after = recalcInstallments({
@@ -338,7 +385,10 @@ describe('cancelamento', () => {
 
     expect(out[0].status).toBe('Pago');
     expect(out.slice(1).every((i) => i.status === 'Cancelado')).toBe(true);
-    expect(out[1].divergenceNote).toBe('pedido cancelado');
+    // Finding 9: o motivo do cancelamento vai em cancelReason, não em
+    // divergenceNote — que fica livre para a auditoria de valor.
+    expect(out[1].cancelReason).toBe('pedido cancelado');
+    expect(out[1].divergenceNote).toBeUndefined();
     expect(out[1].cancelledAt).toBe(NOW);
   });
 });

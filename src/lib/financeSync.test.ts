@@ -169,9 +169,18 @@ describe('entrada em Comprado', () => {
     expect(out.map((i) => i.origin.amount)).toEqual([3000, 3000, 3000]);
   });
 
-  it('não marca divergência antes da compra', () => {
+  it('marca divergência mesmo antes da compra — o comprador pode editar valor/condição depois da aprovação', () => {
+    // Finding 11: a divergência era calculada só depois de "Comprado", então
+    // editar o valor logo após a aprovação reescrevia o compromisso sem
+    // deixar rastro nenhum enquanto o pedido ainda estava em cotação.
     const req = approved({ value: 9600 });
     const out = afterApproval(req);
+    expect(out.every((i) => i.status === 'Previsto')).toBe(true);
+    expect(out[0].divergenceNote).toContain('acima');
+  });
+
+  it('não marca divergência quando o valor bate com o aprovado, antes da compra', () => {
+    const out = afterApproval(approved());
     expect(out.every((i) => i.divergenceNote === undefined)).toBe(true);
   });
 });
@@ -183,7 +192,10 @@ describe('cancelamento', () => {
     const out = deriveInstallments(req, before, NOW, HOLIDAYS) as Installment[];
 
     expect(out.every((i) => i.status === 'Cancelado')).toBe(true);
-    expect(out[0].divergenceNote).toContain('fornecedor sem estoque');
+    // Finding 9: o motivo do cancelamento vai num campo próprio — reusar
+    // divergenceNote apagaria a auditoria de valor aprovado × comprado.
+    expect(out[0].cancelReason).toContain('fornecedor sem estoque');
+    expect(out[0].divergenceNote).toBeUndefined();
     expect(out[0].cancelledAt).toBe(NOW);
   });
 

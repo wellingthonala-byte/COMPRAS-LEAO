@@ -9,6 +9,7 @@ import { Header } from '../components/Layout/Header';
 import { colorFromInitials } from '../utils/colors';
 import { exportCSV, exportExcel } from '../utils/export';
 import { PurchaseRequest, Status, Priority } from '../types';
+import { countsAsPurchase } from '../lib/financeSync';
 
 /* ------------------------------------------------------------------ */
 /* Paleta categórica validada (ordem fixa, CVD-safe)                    */
@@ -33,6 +34,8 @@ const STATUS_COLORS: Record<string, string> = {
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtDate = (s: string) => new Date(s).toLocaleDateString('pt-BR');
+/** Número para export (CSV/Excel pt-BR): vírgula decimal, sem "R$" — mesmo padrão de financeQueries.exportRows. */
+const exportBRL = (v: number) => v.toFixed(2).replace('.', ',');
 
 /* ------------------------------------------------------------------ */
 /* Períodos                                                            */
@@ -65,6 +68,32 @@ function periodRange(key: PeriodKey): { start: Date; end: Date } | null {
   }
 }
 
+/**
+ * Janela do "período anterior" para comparação.
+ *
+ * Para períodos de duração fixa ('hoje', '7d', '30d'...) subtrair a duração
+ * em ms do início é correto. Para períodos de calendário ('mes',
+ * 'mes-anterior', 'ano') não é — meses têm 28 a 31 dias, então a mesma
+ * subtração ora perde dias do mês anterior, ora invade fevereiro inteiro
+ * mais alguns dias de janeiro. Esses três casos deslocam o CALENDÁRIO em
+ * vez da duração.
+ */
+function previousPeriodRange(key: PeriodKey, range: { start: Date; end: Date }): { start: Date; end: Date } {
+  const now = new Date();
+  switch (key) {
+    case 'mes':
+      return { start: new Date(now.getFullYear(), now.getMonth() - 1, 1), end: new Date(now.getFullYear(), now.getMonth(), 1) };
+    case 'mes-anterior':
+      return { start: new Date(now.getFullYear(), now.getMonth() - 2, 1), end: new Date(now.getFullYear(), now.getMonth() - 1, 1) };
+    case 'ano':
+      return { start: new Date(now.getFullYear() - 1, 0, 1), end: new Date(now.getFullYear(), 0, 1) };
+    default: {
+      const len = range.end.getTime() - range.start.getTime();
+      return { start: new Date(range.start.getTime() - len), end: range.start };
+    }
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Métricas derivadas dos dados reais                                  */
 /* ------------------------------------------------------------------ */
@@ -78,8 +107,15 @@ function hasOpenObjection(r: PurchaseRequest): boolean {
   return r.items.some((i) => (i.objections ?? []).some((o) => !o.resolved));
 }
 function approvalHours(r: PurchaseRequest): number | null {
-  const entry = r.history.find((h) => h.action.toLowerCase().includes('aprovad'))
-    ?? r.history.find((h) => h.from === 'Em Aprovação' || (h.to && STATUS_ORDER.indexOf(h.to) > 1));
+  // Um pedido cancelado nunca foi aprovado — nem quando o cancelamento
+  // acontece a partir de "Em Aprovação" ou aparece como saída da coluna no
+  // histórico. Sem esse corte, `isApproved` exclui o pedido do KPI
+  // "Solicitações Aprovadas" mas essa função ainda adotava o evento de
+  // cancelamento como se fosse aprovação, inflando a média com pedidos que
+  // nunca foram aprovados.
+  if (!isApproved(r)) return null;
+  const entry = r.history.find((h) => h.action.toLowerCase().includes('aprovad') && h.to !== 'Cancelada')
+    ?? r.history.find((h) => h.to !== 'Cancelada' && (h.from === 'Em Aprovação' || (h.to && STATUS_ORDER.indexOf(h.to) > 1)));
   const end = r.approvedAt ?? entry?.date;
   if (!end) return null;
   const ms = new Date(end).getTime() - new Date(r.createdAt).getTime();
@@ -89,7 +125,7 @@ function computeKpis(rs: PurchaseRequest[]) {
   const approved = rs.filter(isApproved).length;
   const rejected = rs.filter(hasOpenObjection).length;
   const pending = rs.filter((r) => r.status === 'Nova Solicitação' || r.status === 'Em Aprovação').length;
-  const totalValue = rs.reduce((s, r) => s + (r.value ?? 0), 0);
+  const totalValue = rs.filter(countsAsPurchase).reduce((s, r) => s + (r.value ?? 0), 0);
   const times = rs.map(approvalHours).filter((t): t is number => t !== null);
   const avgApproval = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
   const suppliers = new Set(rs.map((r) => r.supplier).filter(Boolean)).size;
@@ -295,6 +331,13 @@ interface ColumnDef<T> {
   key: string; label: string;
   value: (row: T) => string | number;
   render?: (row: T) => ReactNode;
+  /**
+   * Valor formatado para CSV/Excel. `value` é usado para ordenar/buscar e
+   * fica cru de propósito (ISO na data, ponto decimal no número) — sem
+   * isso o export sai com data ilegível e valor que o Excel pt-BR (separador
+   * ';') não reconhece como número. Cai para `value` quando ausente.
+   */
+  exportValue?: (row: T) => string | number;
   align?: 'left' | 'right';
 }
 function DataTable<T>({ title, columns, rows, getId, groupOptions }: {
@@ -345,7 +388,7 @@ function DataTable<T>({ title, columns, rows, getId, groupOptions }: {
   };
   const exportRows = () => {
     const source = selected.size > 0 ? filtered.filter((r) => selected.has(getId(r))) : filtered;
-    return source.map((r) => visibleCols.map((c) => c.value(r)));
+    return source.map((r) => visibleCols.map((c) => (c.exportValue ? c.exportValue(r) : c.value(r))));
   };
   const allPageSelected = pageRows.length > 0 && pageRows.every((r) => selected.has(getId(r)));
   const togglePageSelection = () => {
@@ -608,11 +651,10 @@ export function ReportsPage({ requests }: ReportsPageProps) {
   const previous = useMemo(() => {
     const range = periodRange(period);
     if (!range) return null;
-    const len = range.end.getTime() - range.start.getTime();
-    const prevStart = new Date(range.start.getTime() - len);
+    const { start: prevStart, end: prevEnd } = previousPeriodRange(period, range);
     return requests.filter((r) => {
       const d = new Date(r.createdAt);
-      return d >= prevStart && d < range.start;
+      return d >= prevStart && d < prevEnd;
     });
   }, [requests, period]);
 
@@ -649,7 +691,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
   const purchasesByMonth = useMemo(() => {
     const byMonth = new Map<string, number>();
     filtered.forEach((r) => {
-      if (!r.value) return;
+      if (!r.value || !countsAsPurchase(r)) return;
       const k = r.createdAt.slice(0, 7);
       byMonth.set(k, (byMonth.get(k) ?? 0) + r.value);
     });
@@ -663,7 +705,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
 
   const bySupplier = useMemo(() => {
     const m = new Map<string, number>();
-    filtered.forEach((r) => { if (r.supplier && r.value) m.set(r.supplier, (m.get(r.supplier) ?? 0) + r.value); });
+    filtered.forEach((r) => { if (r.supplier && r.value && countsAsPurchase(r)) m.set(r.supplier, (m.get(r.supplier) ?? 0) + r.value); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value], i) => ({ label, value, color: CAT[i % CAT.length] }));
   }, [filtered]);
 
@@ -695,7 +737,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
   const topSuppliers = useMemo(() => {
     const m = new Map<string, { count: number; value: number }>();
     filtered.forEach((r) => {
-      if (!r.supplier) return;
+      if (!r.supplier || !countsAsPurchase(r)) return;
       const cur = m.get(r.supplier) ?? { count: 0, value: 0 };
       m.set(r.supplier, { count: cur.count + 1, value: cur.value + (r.value ?? 0) });
     });
@@ -729,7 +771,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
 
   /* -------------------- Linhas das tabelas -------------------- */
   const purchaseRows = useMemo(() =>
-    filtered.filter((r) => r.supplier || r.value).flatMap((r) =>
+    filtered.filter((r) => (r.supplier || r.value) && countsAsPurchase(r)).flatMap((r) =>
       r.items.map((i) => ({
         id: `${r.id}-${i.id}`,
         supplier: r.supplier ?? '—',
@@ -745,7 +787,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
   const supplierRows = useMemo(() => {
     const m = new Map<string, { count: number; value: number; last: string; deliveries: number[] }>();
     filtered.forEach((r) => {
-      if (!r.supplier) return;
+      if (!r.supplier || !countsAsPurchase(r)) return;
       const cur = m.get(r.supplier) ?? { count: 0, value: 0, last: r.createdAt, deliveries: [] };
       cur.count += 1;
       cur.value += r.value ?? 0;
@@ -912,7 +954,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
                         ),
                       },
                       { key: 'sector', label: 'Centro de Custo', value: (r) => r.sector },
-                      { key: 'date', label: 'Data', value: (r) => r.createdAt, render: (r) => fmtDate(r.createdAt) },
+                      { key: 'date', label: 'Data', value: (r) => r.createdAt, render: (r) => fmtDate(r.createdAt), exportValue: (r) => fmtDate(r.createdAt) },
                       {
                         key: 'status', label: 'Status', value: (r) => r.status,
                         render: (r) => (
@@ -922,7 +964,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
                           </span>
                         ),
                       },
-                      { key: 'value', label: 'Valor', value: (r) => r.value ?? 0, render: (r) => (r.value ? fmtBRL(r.value) : '—'), align: 'right' },
+                      { key: 'value', label: 'Valor', value: (r) => r.value ?? 0, render: (r) => (r.value ? fmtBRL(r.value) : '—'), exportValue: (r) => exportBRL(r.value ?? 0), align: 'right' },
                       {
                         key: 'priority', label: 'Prioridade', value: (r) => r.priority,
                         render: (r) => (
@@ -944,9 +986,9 @@ export function ReportsPage({ requests }: ReportsPageProps) {
                       { key: 'supplier', label: 'Fornecedor', value: (r) => r.supplier },
                       { key: 'product', label: 'Produto', value: (r) => r.product },
                       { key: 'quantity', label: 'Quantidade', value: (r) => r.quantity, align: 'right' },
-                      { key: 'unit', label: 'Valor Unitário', value: (r) => Math.round(r.unit * 100) / 100, render: (r) => (r.unit ? fmtBRL(r.unit) : '—'), align: 'right' },
-                      { key: 'total', label: 'Valor Total', value: (r) => Math.round(r.total * 100) / 100, render: (r) => (r.total ? <span className="font-semibold text-slate-800">{fmtBRL(r.total)}</span> : '—'), align: 'right' },
-                      { key: 'date', label: 'Data', value: (r) => r.date, render: (r) => fmtDate(r.date) },
+                      { key: 'unit', label: 'Valor Unitário', value: (r) => Math.round(r.unit * 100) / 100, render: (r) => (r.unit ? fmtBRL(r.unit) : '—'), exportValue: (r) => exportBRL(r.unit), align: 'right' },
+                      { key: 'total', label: 'Valor Total', value: (r) => Math.round(r.total * 100) / 100, render: (r) => (r.total ? <span className="font-semibold text-slate-800">{fmtBRL(r.total)}</span> : '—'), exportValue: (r) => exportBRL(r.total), align: 'right' },
+                      { key: 'date', label: 'Data', value: (r) => r.date, render: (r) => fmtDate(r.date), exportValue: (r) => fmtDate(r.date) },
                     ]}
                   />
 
@@ -957,11 +999,13 @@ export function ReportsPage({ requests }: ReportsPageProps) {
                     columns={[
                       { key: 'name', label: 'Nome', value: (r) => r.name, render: (r) => <span className="font-semibold text-slate-700">{r.name}</span> },
                       { key: 'count', label: 'Qtd. de Compras', value: (r) => r.count, align: 'right' },
-                      { key: 'value', label: 'Valor Comprado', value: (r) => r.value, render: (r) => fmtBRL(r.value), align: 'right' },
-                      { key: 'last', label: 'Última Compra', value: (r) => r.last, render: (r) => fmtDate(r.last) },
+                      { key: 'value', label: 'Valor Comprado', value: (r) => r.value, render: (r) => fmtBRL(r.value), exportValue: (r) => exportBRL(r.value), align: 'right' },
+                      { key: 'last', label: 'Última Compra', value: (r) => r.last, render: (r) => fmtDate(r.last), exportValue: (r) => fmtDate(r.last) },
                       {
                         key: 'avgDelivery', label: 'Tempo Médio de Entrega', value: (r) => r.avgDelivery ?? -1,
-                        render: (r) => (r.avgDelivery !== null ? `${r.avgDelivery.toFixed(1).replace('.', ',')} dia(s)` : '—'), align: 'right',
+                        render: (r) => (r.avgDelivery !== null ? `${r.avgDelivery.toFixed(1).replace('.', ',')} dia(s)` : '—'),
+                        exportValue: (r) => (r.avgDelivery !== null ? r.avgDelivery.toFixed(1).replace('.', ',') : ''),
+                        align: 'right',
                       },
                     ]}
                   />

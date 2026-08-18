@@ -16,7 +16,7 @@ function makeRequest(id: string, over: Partial<PurchaseRequest> = {}): PurchaseR
     requesterInitials: 'AL',
     sector: 'Produção',
     priority: 'Não Urgente',
-    status: 'Em Cotação' as Status,
+    status: 'Comprado' as Status,
     createdAt: '2026-07-01T10:00:00.000Z',
     deliveryForecast: '2026-09-01',
     supplier: 'Fornecedor X',
@@ -28,15 +28,43 @@ function makeRequest(id: string, over: Partial<PurchaseRequest> = {}): PurchaseR
 }
 
 describe('elegibilidade', () => {
-  it('pega pedidos em aberto com valor cotado', () => {
+  it('pega pedidos já comprados (ou além) com valor cotado', () => {
     const plan = planBackfill([
       makeRequest('1'),
-      makeRequest('2', { status: 'Comprado' }),
-      makeRequest('3', { status: 'Em Rota' }),
-      makeRequest('4', { status: 'Em Serviço' }),
+      makeRequest('2', { status: 'Em Rota' }),
+      makeRequest('3', { status: 'Em Serviço' }),
+      makeRequest('4', { status: 'Disponível para Retirada' }),
     ], [], OPTS);
     expect(plan.candidates.map((c) => c.request.id)).toEqual(['1', '2', '3', '4']);
     expect(plan.skipped).toEqual([]);
+  });
+
+  it('nunca fabrica aprovação de valor para pedido ainda vivo antes de Comprado', () => {
+    const plan = planBackfill([
+      makeRequest('1', { status: 'Nova Solicitação' }),
+      makeRequest('2', { status: 'Em Aprovação' }),
+      makeRequest('3', { status: 'Em Cotação' }),
+    ], [], OPTS);
+    expect(plan.candidates).toEqual([]);
+    expect(plan.skipped.map((s) => s.reason)).toEqual([
+      'Aguardando aprovação de valor do gestor',
+      'Aguardando aprovação de valor do gestor',
+      'Aguardando aprovação de valor do gestor',
+    ]);
+  });
+
+  it('respeita pedido em Em Cotação que já tem aprovação de valor real', () => {
+    const plan = planBackfill([
+      makeRequest('1', {
+        status: 'Em Cotação',
+        valueApproval: {
+          approvedBy: 'Well', approvalId: 'u1', approvedAt: '2026-08-01T09:00:00.000Z',
+          approvedValue: 3000, paymentTermsLabel: '30 dias',
+        },
+      }),
+    ], [], OPTS);
+    expect(plan.candidates).toHaveLength(1);
+    expect(plan.candidates[0].synthesizedApproval).toBe(false);
   });
 
   it('ignora cancelada, finalizada e sem valor', () => {
@@ -70,11 +98,19 @@ describe('síntese da aprovação de valor', () => {
 
     expect(c.synthesizedApproval).toBe(true);
     expect(c.patchedRequest.valueApproval).toMatchObject({
-      approvedBy: 'Well',
+      approvedBy: 'Backfill (retroativo)',
       approvalId: 'backfill',
       approvedAt: '2026-08-05T09:00:00.000Z',
       approvedValue: 3000,
     });
+  });
+
+  it('nunca atribui a aprovação de valor sintetizada ao gestor que só aprovou o mérito', () => {
+    // approvedBy aqui é a aprovação de MÉRITO (campo separado de valueApproval) — o
+    // backfill não pode usar esse nome como autor de uma aprovação de VALOR que a
+    // pessoa nunca deu (era exatamente o bug do finding 24).
+    const plan = planBackfill([makeRequest('1', { approvedBy: 'Well', approvedAt: '2026-08-05T09:00:00.000Z' })], [], OPTS);
+    expect(plan.candidates[0].patchedRequest.valueApproval?.approvedBy).toBe('Backfill (retroativo)');
   });
 
   it('sem aprovação de mérito usa a entrada em Em Cotação', () => {
@@ -82,7 +118,7 @@ describe('síntese da aprovação de valor', () => {
       history: [{ id: 'h1', date: '2026-07-15T10:00:00.000Z', user: 'Charles', action: 'Status alterado', to: 'Em Cotação' }],
     })], [], OPTS);
     expect(plan.candidates[0].patchedRequest.valueApproval?.approvedAt).toBe('2026-07-15T10:00:00.000Z');
-    expect(plan.candidates[0].patchedRequest.valueApproval?.approvedBy).toBe('Backfill');
+    expect(plan.candidates[0].patchedRequest.valueApproval?.approvedBy).toBe('Backfill (retroativo)');
   });
 
   it('sem histórico nenhum cai para a data de criação', () => {
@@ -140,8 +176,14 @@ describe('parcelas geradas', () => {
     expect(i.status).toBe('Confirmado');
   });
 
-  it('pedido ainda em cotação nasce Previsto', () => {
-    const plan = planBackfill([makeRequest('1')], [], OPTS);
+  it('pedido em cotação com aprovação de valor real nasce Previsto', () => {
+    const plan = planBackfill([makeRequest('1', {
+      status: 'Em Cotação',
+      valueApproval: {
+        approvedBy: 'Well', approvalId: 'u1', approvedAt: '2026-08-01T09:00:00.000Z',
+        approvedValue: 3000, paymentTermsLabel: '30 dias',
+      },
+    })], [], OPTS);
     expect(plan.candidates[0].installments[0].status).toBe('Previsto');
   });
 

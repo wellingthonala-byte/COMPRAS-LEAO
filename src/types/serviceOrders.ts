@@ -97,6 +97,36 @@ export interface ServiceOrder {
   checklist: OSChecklistItem[];
   history: OSEvent[];
   purchaseRequestId?: string;
+  /**
+   * Só presente em O.S. importadas do sistema antigo: guarda os valores
+   * originais das colunas normalizadas que o front não modela/edita
+   * (service_type, payment_status, paid_value, execution_deadline "cru").
+   * upsertServiceOrders reenvia estes valores em vez de reescrevê-los com
+   * o fixo/derivado do app (ver FINDING 23) — e como este campo faz parte
+   * do documento salvo em extra.doc, ele sobrevive a novas leituras depois
+   * que a O.S. passa a ser lida pelo branch "doc" de rowToOrder.
+   */
+  importedMeta?: {
+    serviceType: string;
+    paymentStatus: string;
+    paidValue?: number | null;
+    executionDeadline?: string | null;
+  };
+}
+
+/** Rótulo provisório exibido enquanto o número definitivo (atribuído pela
+ * sequência do banco) ainda não voltou do servidor — ver FINDING 20. */
+export const OS_NUMBER_PENDING = 'Nº pendente...';
+
+/**
+ * Formata o número definitivo da O.S. a partir da sequência atômica do banco
+ * (order_number) e da data de criação. Único ponto que conhece o formato
+ * "OS-XXX/MM/AA" — tanto a leitura (rowToOrder) quanto a resolução do
+ * rótulo provisório depois de um upsert bem-sucedido usam esta função.
+ */
+export function formatOSNumber(orderNumber: number, createdAt: string): string {
+  const d = new Date(createdAt);
+  return `OS-${String(orderNumber).padStart(3, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
 }
 
 const OS_KEY = 'compras-leao-service-orders';
@@ -133,6 +163,14 @@ export function saveServiceOrders(orders: ServiceOrder[]): void {
   localStorage.setItem(OS_KEY, JSON.stringify(orders));
 }
 
+/**
+ * @deprecated Palpite local por mês, nunca coincide de forma determinística
+ * com a sequência global atribuída pelo banco (FINDING 20). Não usar mais
+ * para preencher `ServiceOrder.number` na criação — use `OS_NUMBER_PENDING`
+ * como rótulo provisório e resolva o número definitivo com `formatOSNumber`
+ * a partir do retorno de `upsertServiceOrders`. Mantida apenas para não
+ * quebrar quem ainda importar esta função.
+ */
 export function generateOSNumber(openedAt: string, existing: string[]): string {
   const d = new Date(openedAt);
   const suffix = `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;

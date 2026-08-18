@@ -14,7 +14,9 @@ import { PurchaseRequest } from '../types';
 import { AppUser, canViewFinance } from '../data/users';
 import { useInstallments } from '../lib/financeStore';
 import { getFinanceSettings } from '../lib/financeSettings';
-import { commitmentSummary, joinInstallments, limboRequests } from '../lib/financeQueries';
+import { commitmentSummary, joinInstallments, limboRequests, overdueInstallments } from '../lib/financeQueries';
+import { countsAsPurchase } from '../lib/financeSync';
+import { localDayOf, sumAmounts } from '../lib/finance';
 import { ServiceOrder, loadServiceOrders, osIsOverdue } from '../types/serviceOrders';
 import { Donut, LineChart, Bars, HBars, Sparkline, ChartEmpty } from '../components/UI/ChartKit';
 import { fetchServiceOrders } from '../lib/backend';
@@ -22,6 +24,8 @@ import { fetchServiceOrders } from '../lib/backend';
 interface DashboardPageProps { requests: PurchaseRequest[]; currentUser: AppUser }
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+/** Número para export (CSV pt-BR): vírgula decimal, sem "R$" — mesmo padrão de financeQueries.exportRows. */
+const exportBRL = (v: number) => v.toFixed(2).replace('.', ',');
 const isActive = (r: PurchaseRequest) => r.status !== 'Finalizado' && r.status !== 'Cancelada';
 
 const STATUS_COLORS: Record<string, string> = {
@@ -149,14 +153,22 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
   }, []);
 
   // Comprometido do mês corrente e dos 2 seguintes, mais o limbo
+  const financeRows = useMemo(() => joinInstallments(installments, requests), [installments, requests]);
   const commitment = useMemo(
-    () => commitmentSummary(joinInstallments(installments, requests), new Date().toISOString(), 3),
-    [installments, requests]
+    () => commitmentSummary(financeRows, new Date().toISOString(), 3),
+    [financeRows]
   );
   const financeLimbo = useMemo(
     () => limboRequests(requests, getFinanceSettings().limboDays, new Date().toISOString()),
     [requests]
   );
+  // Parcelas vencidas somem da projeção acima (só olha do mês corrente em
+  // diante) — sem isso, dinheiro comprometido e não pago fica invisível.
+  const financeOverdue = useMemo(
+    () => overdueInstallments(financeRows, new Date().toISOString()),
+    [financeRows]
+  );
+  const financeOverdueTotal = sumAmounts(financeOverdue.map((r) => r.installment.amount));
 
   const sectors = useMemo(() => [...new Set(requests.map((r) => r.sector))].sort(), [requests]);
   const categories = useMemo(() => [...new Set(requests.flatMap((r) => r.items.map((i) => i.application)).filter(Boolean))].sort(), [requests]);
@@ -186,12 +198,15 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
   ), [requests, periodStart, fSector, fCategory, fSupplier, fStatus, fPriority]);
 
   /* ------------------- KPIs com sparkline e delta ------------------- */
+  // Dia-calendário em America/Sao_Paulo, não em UTC — .toISOString().slice(0,10)
+  // vira o dia seguinte a partir das 21h em Brasília e desalinha essas séries
+  // do "hoje" que o resto da tela mostra.
   const daySeries = (rs: { createdAt: string }[], days: number): number[] => {
     const out: number[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      out.push(rs.filter((r) => r.createdAt.slice(0, 10) === key).length);
+      const key = localDayOf(d.toISOString());
+      out.push(rs.filter((r) => localDayOf(r.createdAt) === key).length);
     }
     return out;
   };
@@ -199,8 +214,8 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
     const out: number[] = [];
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      out.push(rs.filter((r) => r.createdAt.slice(0, 10) === key).reduce((s, r) => s + (r.value ?? 0), 0));
+      const key = localDayOf(d.toISOString());
+      out.push(rs.filter((r) => localDayOf(r.createdAt) === key).reduce((s, r) => s + (r.value ?? 0), 0));
     }
     return out;
   };
@@ -220,7 +235,8 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
     const finalized = filtered.filter((r) => r.status === 'Finalizado');
     const overdue = open.filter((r) => new Date(r.deliveryForecast + 'T23:59:59') < new Date());
     const machine = open.filter((r) => r.priority === 'Máquina Parada');
-    const totalValue = filtered.reduce((s, r) => s + (r.value ?? 0), 0);
+    const purchased = filtered.filter(countsAsPurchase);
+    const totalValue = purchased.reduce((s, r) => s + (r.value ?? 0), 0);
     const spark = daySeries(filtered, 14);
     return [
       { label: 'Total de Solicitações', value: String(filtered.length), icon: Package, color: '#7c3aed', bg: 'bg-violet-50', text: 'text-violet-600', d: delta(last7.length, prev7.length), spark, to: '/', tip: 'Total no filtro atual. Variação: últimos 7 dias vs. 7 anteriores. Clique para abrir o Kanban.' },
@@ -228,20 +244,20 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
       { label: 'Finalizadas', value: String(finalized.length), icon: CheckCircle2, color: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-600', d: null, spark: daySeries(finalized, 14), to: '/', tip: 'Solicitações concluídas com sucesso.' },
       { label: 'Máquina Parada', value: String(machine.length), icon: AlertTriangle, color: '#dc2626', bg: 'bg-red-50', text: 'text-red-600', d: null, invert: true, spark: daySeries(machine, 14), to: '/', tip: 'Prioridade máxima em aberto — atenção imediata.' },
       { label: 'Em Atraso', value: String(overdue.length), icon: Clock, color: '#ea580c', bg: 'bg-orange-50', text: 'text-orange-600', d: null, invert: true, spark: daySeries(overdue, 14), to: '/', tip: 'Solicitações abertas com previsão de entrega vencida.' },
-      { label: 'Valor Total', value: fmtBRL(totalValue), icon: DollarSign, color: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-700', d: null, spark: dayValueSeries(filtered, 14), to: '/relatorios', tip: 'Soma dos valores das compras registradas. Clique para os Relatórios.' },
+      { label: 'Valor Total', value: fmtBRL(totalValue), icon: DollarSign, color: '#059669', bg: 'bg-emerald-50', text: 'text-emerald-700', d: null, spark: dayValueSeries(purchased, 14), to: '/relatorios', tip: 'Soma dos valores das compras registradas. Clique para os Relatórios.' },
     ];
   }, [filtered]);
 
   /* ------------------- Resumo do dia ------------------- */
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDayOf(new Date().toISOString());
   const daySummary = useMemo(() => {
-    const openToday = requests.filter((r) => r.createdAt.slice(0, 10) === today).length;
-    const doneToday = requests.filter((r) => r.status === 'Finalizado' && r.history.some((h) => h.date.slice(0, 10) === today && h.to === 'Finalizado')).length;
+    const openToday = requests.filter((r) => localDayOf(r.createdAt) === today).length;
+    const doneToday = requests.filter((r) => r.status === 'Finalizado' && r.history.some((h) => localDayOf(h.date) === today && h.to === 'Finalizado')).length;
     const lateReq = requests.filter((r) => isActive(r) && new Date(r.deliveryForecast + 'T23:59:59') < new Date()).length;
     const lateOS = orders.filter(osIsOverdue).length;
     const waiting = requests.filter((r) => r.status === 'Em Aprovação' || r.status === 'Nova Solicitação').length;
     const urgent = requests.filter((r) => isActive(r) && r.priority !== 'Não Urgente').length;
-    const boughtToday = requests.filter((r) => r.history.some((h) => h.date.slice(0, 10) === today && h.to === 'Comprado')).reduce((s, r) => s + (r.value ?? 0), 0);
+    const boughtToday = requests.filter((r) => r.history.some((h) => localDayOf(h.date) === today && h.to === 'Comprado')).reduce((s, r) => s + (r.value ?? 0), 0);
     return [
       { label: 'Abertas hoje', value: String(openToday), icon: Plus, cls: 'text-violet-600 bg-violet-50', to: '/' },
       { label: 'Finalizadas hoje', value: String(doneToday), icon: CheckCircle2, cls: 'text-emerald-600 bg-emerald-50', to: '/' },
@@ -259,13 +275,13 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
     const out: { label: string; value: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date(); d.setDate(d.getDate() - i);
-      const key = d.toISOString().slice(0, 10);
-      out.push({ label: `${key.slice(8, 10)}/${key.slice(5, 7)}`, value: filtered.filter((r) => r.createdAt.slice(0, 10) === key).length });
+      const key = localDayOf(d.toISOString());
+      out.push({ label: `${key.slice(8, 10)}/${key.slice(5, 7)}`, value: filtered.filter((r) => localDayOf(r.createdAt) === key).length });
     }
     // se não houver nada nos últimos 14 dias, mostra por semana usando todo o histórico
     if (out.every((o) => o.value === 0) && filtered.length > 0) {
       const byDay = new Map<string, number>();
-      filtered.forEach((r) => byDay.set(r.createdAt.slice(0, 10), (byDay.get(r.createdAt.slice(0, 10)) ?? 0) + 1));
+      filtered.forEach((r) => { const k = localDayOf(r.createdAt); byDay.set(k, (byDay.get(k) ?? 0) + 1); });
       return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-14)
         .map(([k, v]) => ({ label: `${k.slice(8, 10)}/${k.slice(5, 7)}`, value: v }));
     }
@@ -280,20 +296,20 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
 
   const bySupplier = useMemo(() => {
     const m = new Map<string, number>();
-    filtered.forEach((r) => { if (r.supplier && r.value) m.set(r.supplier, (m.get(r.supplier) ?? 0) + r.value); });
+    filtered.forEach((r) => { if (r.supplier && r.value && countsAsPurchase(r)) m.set(r.supplier, (m.get(r.supplier) ?? 0) + r.value); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value }));
   }, [filtered]);
 
   const monthlySpend = useMemo(() => {
     const m = new Map<string, number>();
-    filtered.forEach((r) => { if (r.value) m.set(r.createdAt.slice(0, 7), (m.get(r.createdAt.slice(0, 7)) ?? 0) + r.value); });
+    filtered.forEach((r) => { if (r.value && countsAsPurchase(r)) m.set(r.createdAt.slice(0, 7), (m.get(r.createdAt.slice(0, 7)) ?? 0) + r.value); });
     return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-6)
       .map(([k, v]) => ({ label: `${k.slice(5, 7)}/${k.slice(2, 4)}`, value: v }));
   }, [filtered]);
 
   const bySector = useMemo(() => {
     const m = new Map<string, number>();
-    filtered.forEach((r) => { if (r.value) m.set(r.sector, (m.get(r.sector) ?? 0) + r.value); });
+    filtered.forEach((r) => { if (r.value && countsAsPurchase(r)) m.set(r.sector, (m.get(r.sector) ?? 0) + r.value); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value }));
   }, [filtered]);
 
@@ -551,7 +567,7 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
                 Ver previsão completa <ArrowUpRight size={11} />
               </button>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
               {commitment.months.map((m, i) => (
                 <button
                   key={m.monthKey}
@@ -569,6 +585,15 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
                   </p>
                 </button>
               ))}
+              <div className={`rounded-xl p-3 border ${financeOverdue.length > 0 ? 'bg-red-50 border-red-200' : 'border-slate-100'}`}>
+                <p className="text-[10px] text-slate-400 uppercase tracking-wide">Vencido, sem baixa</p>
+                <p className={`text-base font-bold mt-0.5 ${financeOverdue.length > 0 ? 'text-red-700' : 'text-slate-800'}`}>
+                  {fmtBRL(financeOverdueTotal)}
+                </p>
+                <p className="text-[10px] text-slate-500 mt-1">
+                  {financeOverdue.length > 0 ? `${financeOverdue.length} parcela(s) vencida(s)` : 'Nenhuma parcela vencida'}
+                </p>
+              </div>
               <div className={`rounded-xl p-3 border ${financeLimbo.length > 0 ? 'bg-red-50 border-red-200' : 'border-slate-100'}`}>
                 <p className="text-[10px] text-slate-400 uppercase tracking-wide">No limbo</p>
                 <p className={`text-base font-bold mt-0.5 ${financeLimbo.length > 0 ? 'text-red-700' : 'text-slate-800'}`}>
@@ -591,7 +616,7 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
                 <LineChart data={evolution} />
               </SmartCard>
               <SmartCard title="Gastos por Mês" subtitle="Valores registrados nas compras" onRefresh={refresh} onNavigate={navigate} detailsTo="/relatorios"
-                onExport={() => exportCSV(['Mês', 'Valor'], monthlySpend.map((e) => [e.label, e.value]), 'gastos-mensais')}>
+                onExport={() => exportCSV(['Mês', 'Valor'], monthlySpend.map((e) => [e.label, exportBRL(e.value)]), 'gastos-mensais')}>
                 <Bars data={monthlySpend} color="#2563eb" format={(v) => fmtBRL(v)} />
               </SmartCard>
               <SmartCard title="Compras por Categoria" subtitle="Itens solicitados" onRefresh={refresh} onNavigate={navigate} detailsTo="/relatorios"
@@ -599,11 +624,11 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
                 <HBars data={byCategory} />
               </SmartCard>
               <SmartCard title="Compras por Fornecedor" subtitle="Ranking por valor" onRefresh={refresh} onNavigate={navigate} detailsTo="/relatorios"
-                onExport={() => exportCSV(['Fornecedor', 'Valor'], bySupplier.map((e) => [e.label, e.value]), 'por-fornecedor')}>
+                onExport={() => exportCSV(['Fornecedor', 'Valor'], bySupplier.map((e) => [e.label, exportBRL(e.value)]), 'por-fornecedor')}>
                 <HBars data={bySupplier} format={(v) => fmtBRL(v)} />
               </SmartCard>
               <SmartCard title="Gastos por Setor" subtitle="Centro de custo" onRefresh={refresh} onNavigate={navigate} detailsTo="/relatorios"
-                onExport={() => exportCSV(['Setor', 'Valor'], bySector.map((e) => [e.label, e.value]), 'por-setor')}>
+                onExport={() => exportCSV(['Setor', 'Valor'], bySector.map((e) => [e.label, exportBRL(e.value)]), 'por-setor')}>
                 <HBars data={bySector} format={(v) => fmtBRL(v)} />
               </SmartCard>
               <SmartCard title="Compradores Mais Ativos" subtitle="Movimentações no fluxo" onRefresh={refresh} onNavigate={navigate} detailsTo="/relatorios"

@@ -70,6 +70,8 @@ export interface Installment {
   cancelledAt?: string;
   /** Preenchido quando o valor comprado divergiu do valor aprovado. */
   divergenceNote?: string;
+  /** Motivo do cancelamento (pedido cancelado ou excedente de recálculo). Campo separado de divergenceNote para não apagar a auditoria de valor. */
+  cancelReason?: string;
   createdAt: string;
   updatedAt: string;
 }

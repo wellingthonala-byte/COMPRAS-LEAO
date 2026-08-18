@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ClipboardList, FolderOpen, Loader2, ShieldAlert, Wrench, CheckCircle2, XCircle,
   AlarmClock, DollarSign, Plus, Search, X, ChevronLeft, ChevronRight, ChevronUp,
@@ -13,14 +13,15 @@ import { colorFromInitials } from '../utils/colors';
 import { sendNotification } from '../utils/notify';
 import { generateRequestNumber } from '../utils/numbering';
 import { printServiceOrder } from '../utils/printDocument';
-import { fetchServiceOrders, upsertServiceOrders } from '../lib/backend';
+import { fetchServiceOrders } from '../lib/backend';
+import { syncServiceOrders, flushServiceOrderQueue, pendingServiceOrderSyncCount } from '../lib/serviceOrderSyncQueue';
 import { ObjectLinkInput, ObjectLinkView, normalizeUrl } from '../components/UI/ObjectLink';
 import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
 import {
   ServiceOrder, OSStatus, OSPriority, MaintenanceType, OS_FLOW, OS_COLUMNS,
-  loadServiceOrders, saveServiceOrders, generateOSNumber, osCost, osIsOverdue,
-  osSlaMet, osElapsedHours, osIsClosed, osLastUpdate,
+  loadServiceOrders, saveServiceOrders, osCost, osIsOverdue,
+  osSlaMet, osElapsedHours, osIsClosed, osLastUpdate, OS_NUMBER_PENDING,
 } from '../types/serviceOrders';
 
 /* ------------------------------------------------------------------ */
@@ -99,6 +100,14 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<'kanban' | 'lista'>('kanban');
+  const [offline, setOffline] = useState(false);
+  const [pendingSync, setPendingSync] = useState(() => pendingServiceOrderSyncCount());
+  // Snapshot da última sincronização e flag "já veio do servidor pelo menos
+  // uma vez" — sem isso o efeito de sync mandava o array inteiro a cada
+  // mudança (last-write-wins, apagando alterações de outros usuários) e
+  // podia rodar antes mesmo do fetch inicial voltar (FINDING 18).
+  const prevOrders = useRef<ServiceOrder[]>(orders);
+  const remoteLoaded = useRef(false);
 
   // filtros — mesmo padrão da tela de Solicitações
   const [search, setSearch] = useState('');
@@ -112,22 +121,80 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
 
   useEffect(() => { const t = setTimeout(() => setLoading(false), 350); return () => clearTimeout(t); }, []);
 
-  // Busca do Supabase ao abrir a página — fonte da verdade quando online
+  // Aplica ao estado local os números definitivos (order_number do banco)
+  // devolvidos por um upsert/flush bem-sucedido, resolvendo o rótulo
+  // provisório OS_NUMBER_PENDING (FINDING 20).
+  const applyResolvedNumbers = (resolved: { id: string; number: string }[]) => {
+    const byId = new Map(resolved.map((r) => [r.id, r.number]));
+    setOrders((prev) => {
+      let touched = false;
+      const next = prev.map((o) => {
+        const num = byId.get(o.id);
+        if (num && num !== o.number) { touched = true; return { ...o, number: num }; }
+        return o;
+      });
+      return touched ? next : prev;
+    });
+  };
+
+  // Busca do Supabase ao abrir a página — fonte da verdade quando online.
+  // Só depois que isto voltar com sucesso é que o efeito de sincronização
+  // abaixo passa a mandar dados para o servidor (remoteLoaded) — nunca antes.
   useEffect(() => {
     let cancelled = false;
     fetchServiceOrders().then((remote) => {
-      if (cancelled || remote === null) return;
+      if (cancelled) return;
+      if (remote === null) { setOffline(true); return; }
+      remoteLoaded.current = true;
+      prevOrders.current = remote;
       setOrders(remote);
+      setOffline(false);
+    });
+    // Reenvia O.S. que ficaram pendentes de uma sessão anterior
+    void flushServiceOrderQueue(currentUser.id).then((resolved) => {
+      if (cancelled) return;
+      setPendingSync(pendingServiceOrderSyncCount());
+      if (resolved.length > 0) applyResolvedNumbers(resolved);
     });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Sincroniza com o Supabase apenas as O.S. que mudaram desde o último
+  // snapshot (diff por referência) — nunca o array inteiro, para não apagar
+  // alterações que outro usuário já gravou no servidor nesse meio tempo
+  // (FINDING 18). O que falhar entra na fila de reenvio (FINDING 19), em vez
+  // de sumir num console.warn.
   useEffect(() => {
     saveServiceOrders(orders);
-    const t = setTimeout(() => { upsertServiceOrders(orders); }, 800);
+    if (!remoteLoaded.current) { prevOrders.current = orders; return; }
+    const prev = prevOrders.current;
+    const prevById = new Map(prev.map((o) => [o.id, o]));
+    const changed = orders.filter((o) => prevById.get(o.id) !== o);
+    prevOrders.current = orders;
+    if (changed.length === 0) return;
+    const t = setTimeout(() => {
+      syncServiceOrders(changed, currentUser.id).then((resolved) => {
+        setPendingSync(pendingServiceOrderSyncCount());
+        if (resolved) applyResolvedNumbers(resolved);
+      });
+    }, 800);
     return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orders]);
+
+  // Enquanto houver O.S. pendentes de sincronização, tenta reenviar periodicamente
+  useEffect(() => {
+    if (pendingSync === 0) return;
+    const t = setInterval(() => {
+      flushServiceOrderQueue(currentUser.id).then((resolved) => {
+        setPendingSync(pendingServiceOrderSyncCount());
+        if (resolved.length > 0) applyResolvedNumbers(resolved);
+      });
+    }, 20000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingSync]);
 
   const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(null), 3000); };
 
@@ -196,11 +263,13 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   const handleCreate = (os: ServiceOrder) => {
     setOrders((prev) => [os, ...prev]);
     sendNotification({
-      title: `🛠️ Nova O.S. ${os.number}`,
+      title: os.number === OS_NUMBER_PENDING ? '🛠️ Nova O.S. aberta' : `🛠️ Nova O.S. ${os.number}`,
       message: `${os.requester} abriu "${os.title}" (${os.equipment.name || 'sem equipamento'}). Prioridade: ${os.priority}.`,
       priority: os.priority === 'Crítica' ? 5 : os.priority === 'Alta' ? 4 : 3, tags: ['hammer_and_wrench'],
     });
-    showToast(`${os.number} criada`);
+    // O número definitivo (sequência do banco) só chega depois do upsert —
+    // até lá o card/toast mostram o rótulo provisório (FINDING 20).
+    showToast(os.number === OS_NUMBER_PENDING ? 'O.S. criada — obtendo número definitivo...' : `${os.number} criada`);
     setShowNew(false);
     setDuplicating(null);
   };
@@ -265,8 +334,30 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
     cmp('link do objeto', old.objectLink, updated.objectLink);
     cmp('observações', old.observations, updated.observations);
     if (diffs.length === 0) { setEditingOS(null); showToast('Nenhuma alteração para salvar'); return; }
-    updateOrder(updated.id, (o) => addEvent({ ...o, ...updated, history: o.history, comments: o.comments, materials: o.materials, labor: o.labor, checklist: o.checklist },
-      `O.S. editada por ${currentUser.name} — ${diffs.join('; ')}`));
+    // Aplica só os campos que o formulário realmente edita, por cima do
+    // estado ATUAL (`o`, resolvido no momento do save) — nunca o objeto
+    // `updated` inteiro, que carrega um snapshot de status/pausedFrom/
+    // startedAt/completedAt/cancelReason/cancelledBy/purchaseRequestId
+    // tirado quando o modal abriu. Espalhar `updated` inteiro reverteria
+    // qualquer mudança de status feita por outro usuário enquanto o modal
+    // estava aberto (FINDING 21).
+    updateOrder(updated.id, (o) => addEvent({
+      ...o,
+      title: updated.title,
+      description: updated.description,
+      type: updated.type,
+      category: updated.category,
+      customer: updated.customer,
+      equipment: updated.equipment,
+      costCenter: updated.costCenter,
+      technician: updated.technician,
+      priority: updated.priority,
+      slaHours: updated.slaHours,
+      estimatedValue: updated.estimatedValue,
+      dueDate: updated.dueDate,
+      observations: updated.observations,
+      objectLink: updated.objectLink,
+    }, `O.S. editada por ${currentUser.name} — ${diffs.join('; ')}`));
     sendNotification({ title: `✏️ ${updated.number} — O.S. editada`, message: `${currentUser.name} alterou: ${diffs.slice(0, 3).join('; ')}${diffs.length > 3 ? '...' : ''}`, priority: 3, tags: ['pencil'] });
     showToast(`${updated.number} atualizada`);
     setEditingOS(null);
@@ -314,9 +405,18 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
     showToast(`Exportação ${kind.toUpperCase()} gerada`);
   };
 
+  // Relia de fato o servidor (fonte da verdade), não só o cache local — o
+  // botão "Atualizar" mostrava sucesso mesmo relendo apenas o localStorage
+  // (FINDING 18).
   const refresh = () => {
-    setOrders(loadServiceOrders());
-    showToast('Dados atualizados');
+    fetchServiceOrders().then((remote) => {
+      if (remote === null) { showToast('Sem conexão com o servidor — exibindo dados locais'); return; }
+      remoteLoaded.current = true;
+      prevOrders.current = remote;
+      setOrders(remote);
+      setOffline(false);
+      showToast('Dados atualizados');
+    });
   };
 
   const selected = orders.find((o) => o.id === selectedId);
@@ -343,6 +443,18 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 bg-slate-800 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
           <CheckCircle2 size={15} className="text-emerald-400" /> {toast}
+        </div>
+      )}
+      {offline && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-white text-xs px-4 py-1.5 rounded-b-xl shadow-lg">
+          Sem conexão com o servidor — exibindo dados locais de Ordens de Serviço.
+        </div>
+      )}
+      {!offline && pendingSync > 0 && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-amber-500 text-white text-xs px-4 py-1.5 rounded-b-xl shadow-lg">
+          {pendingSync === 1
+            ? '1 O.S. não foi salva no servidor — tentando novamente...'
+            : `${pendingSync} O.S. não foram salvas no servidor — tentando novamente...`}
         </div>
       )}
 
@@ -459,7 +571,6 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
       {(showNew || duplicating || editingOS) && (
         <NewOSModal
           currentUser={currentUser}
-          existingNumbers={orders.map((o) => o.number)}
           base={editingOS ?? duplicating}
           editing={!!editingOS}
           onClose={() => { setShowNew(false); setDuplicating(null); setEditingOS(null); }}
@@ -740,8 +851,8 @@ function OrdersTable({ orders, onView, onAdvance, canAdvanceFrom }: {
 /* ================================================================== */
 /* Modal Nova O.S. (também usada para duplicar)                        */
 /* ================================================================== */
-function NewOSModal({ currentUser, existingNumbers, base, editing = false, onClose, onCreate, onSaveEdit }: {
-  currentUser: AppUser; existingNumbers: string[]; base?: ServiceOrder | null; editing?: boolean;
+function NewOSModal({ currentUser, base, editing = false, onClose, onCreate, onSaveEdit }: {
+  currentUser: AppUser; base?: ServiceOrder | null; editing?: boolean;
   onClose: () => void; onCreate: (os: ServiceOrder) => void; onSaveEdit?: (os: ServiceOrder) => void;
 }) {
   const users = loadUsers();
@@ -782,7 +893,10 @@ function NewOSModal({ currentUser, existingNumbers, base, editing = false, onClo
     const now = new Date().toISOString();
     onCreate({
       id: crypto.randomUUID(),
-      number: generateOSNumber(now, existingNumbers),
+      // Número definitivo vem da sequência global do banco (order_number),
+      // atribuído só depois do upsert — nunca de um palpite local por mês,
+      // que diverge do banco de forma não-determinística (FINDING 20).
+      number: OS_NUMBER_PENDING,
       title: f.title.trim(), description: f.description.trim(),
       type: f.type, category: f.category, customer: f.customer.trim() || undefined,
       equipment: { code: f.equipCode, name: f.equipName.trim(), model: f.equipModel, manufacturer: f.equipManufacturer, serial: f.equipSerial, patrimony: f.equipPatrimony, location: f.equipLocation },
@@ -934,27 +1048,45 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
   const matCost = os.materials.reduce((s, m) => s + m.quantity * m.unitValue, 0);
 
   const addMaterial = () => {
-    if (!mat.product.trim() || !Number(mat.quantity)) {
-      setMatError('Informe produto e quantidade válidos.');
+    // Quantidade tem que ser > 0 e finita; valor unitário >= 0 e finito —
+    // `!Number('-3')` é false, então um `!Number(...)` sozinho deixava
+    // negativos passarem e produzirem custo negativo (FINDING 22).
+    const quantity = Number(mat.quantity);
+    const unitValue = mat.unitValue.trim() === '' ? 0 : Number(mat.unitValue);
+    if (!mat.product.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+      setMatError('Informe produto e quantidade válida (maior que zero).');
+      return;
+    }
+    if (!Number.isFinite(unitValue) || unitValue < 0) {
+      setMatError('Valor unitário inválido — não pode ser negativo.');
       return;
     }
     setMatError('');
     onUpdate((o) => addEvent({
       ...o,
-      materials: [...o.materials, { id: `m-${Date.now()}`, product: mat.product.trim(), code: mat.code, quantity: Number(mat.quantity), unit: mat.unit, unitValue: Number(mat.unitValue) || 0 }],
+      materials: [...o.materials, { id: `m-${Date.now()}`, product: mat.product.trim(), code: mat.code, quantity, unit: mat.unit, unitValue }],
     }, `Material adicionado: ${mat.product.trim()} (${mat.quantity} ${mat.unit})`));
     setMat({ product: '', code: '', quantity: '1', unit: 'un', unitValue: '' });
   };
 
   const addLabor = () => {
-    if (!lab.technician.trim() || !Number(lab.hours)) {
-      setLabError('Informe técnico e horas válidas.');
+    // Mesma regra da FINDING 22: horas > 0 e finitas; R$/h e horas extras
+    // >= 0 e finitas.
+    const hours = Number(lab.hours);
+    const hourRate = lab.hourRate.trim() === '' ? 0 : Number(lab.hourRate);
+    const extraHours = lab.extraHours.trim() === '' ? 0 : Number(lab.extraHours);
+    if (!lab.technician.trim() || !Number.isFinite(hours) || hours <= 0) {
+      setLabError('Informe técnico e horas válidas (maior que zero).');
+      return;
+    }
+    if (!Number.isFinite(hourRate) || hourRate < 0 || !Number.isFinite(extraHours) || extraHours < 0) {
+      setLabError('Valor por hora e horas extras não podem ser negativos.');
       return;
     }
     setLabError('');
     onUpdate((o) => addEvent({
       ...o,
-      labor: [...o.labor, { id: `l-${Date.now()}`, technician: lab.technician.trim(), hours: Number(lab.hours), hourRate: Number(lab.hourRate) || 0, extraHours: Number(lab.extraHours) || 0 }],
+      labor: [...o.labor, { id: `l-${Date.now()}`, technician: lab.technician.trim(), hours, hourRate, extraHours }],
     }, `Mão de obra registrada: ${lab.technician.trim()} (${lab.hours}h)`));
     setLab({ technician: os.technician || '', hours: '', hourRate: '', extraHours: '0' });
   };

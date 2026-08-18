@@ -14,7 +14,7 @@ import { AppUser } from './data/users';
 import { fetchRequests, insertStatusHistory, logoutSupabase } from './lib/backend';
 import { initInstallments } from './lib/financeStore';
 import { useLimboAlert } from './lib/useFinanceAlerts';
-import { flushRequestQueue, pendingRequestSyncCount, syncRequests } from './lib/requestSyncQueue';
+import { enqueueRequests, flushRequestQueue, getQueuedRequests, pendingRequestSyncCount, syncRequests } from './lib/requestSyncQueue';
 
 const REQUESTS_KEY = 'compras-leao-requests';
 const USER_KEY = 'compras-leao-user';
@@ -80,19 +80,36 @@ export default function App() {
     // As parcelas têm cache e fila próprios (lib/financeStore) e carregam em
     // paralelo: uma falha aqui não deve impedir o Kanban de abrir.
     void initInstallments();
-    // Tenta reenviar solicitações que ficaram pendentes de uma sessão anterior
-    void flushRequestQueue(currentUser.id).then(() => setPendingSync(pendingRequestSyncCount()));
-    fetchRequests().then((remote) => {
+    void (async () => {
+      // Reenvia pendências de uma sessão anterior ANTES do fetch: se o fetch
+      // respondesse primeiro (ou em paralelo), setRequests(remote) substituiria
+      // a tela por uma versão do servidor que ainda não contém essas pendências,
+      // e elas deixariam de aparecer como "changed" (diff por identidade).
+      await flushRequestQueue(currentUser.id);
+      if (cancelled) return;
+      setPendingSync(pendingRequestSyncCount());
+      const remote = await fetchRequests();
       if (cancelled) return;
       if (remote === null) {
         setSyncState('offline');
         return;
       }
       remoteLoaded.current = true;
-      prevRequests.current = remote;
-      setRequests(remote);
+      // O que ainda restar na fila (o flush acima pode ter falhado de novo,
+      // ou algo foi enfileirado durante a própria janela de sincronização)
+      // vence sobre o remoto — senão a pendência some silenciosamente da tela.
+      const queued = getQueuedRequests();
+      const merged = queued.length === 0
+        ? remote
+        : (() => {
+            const byId = new Map(remote.map((r) => [r.id, r]));
+            for (const q of queued) byId.set(q.id, q);
+            return [...byId.values()];
+          })();
+      prevRequests.current = merged;
+      setRequests(merged);
       setSyncState('online');
-    });
+    })();
     return () => { cancelled = true; };
   }, [currentUser?.id]);
 
@@ -100,22 +117,48 @@ export default function App() {
   // O que falhar entra numa fila (lib/requestSyncQueue) em vez de sumir num
   // console.warn — o usuário passa a ver quando algo não chegou ao servidor.
   useEffect(() => {
-    if (!currentUser || !remoteLoaded.current) { prevRequests.current = requests; return; }
+    if (!currentUser) { prevRequests.current = requests; return; }
     const prev = prevRequests.current;
     const prevById = new Map(prev.map((r) => [r.id, r]));
     const changed = requests.filter((r) => prevById.get(r.id) !== r);
-    // Entradas de histórico novas desde a última sincronização — só estas vão
-    // para status_history, para não reinserir o histórico inteiro a cada save.
+    // Entradas de histórico novas desde a última sincronização CONFIRMADA —
+    // só estas vão para status_history. O baseline (prevRequests.current) só
+    // avança quando o envio é confirmado (ver abaixo), então uma falha ou um
+    // ciclo cancelado faz este cálculo se acumular corretamente no próximo
+    // ciclo, em vez de perder entradas.
     const newHistoryByRequest = changed.map((r) => ({
       r,
       newEntries: r.history.slice(prevById.get(r.id)?.history.length ?? 0),
     }));
-    prevRequests.current = requests;
+    if (!remoteLoaded.current) {
+      // Remoto ainda não chegou (ou o fetch falhou de vez, sem retry nesta
+      // sessão): não há como fazer upsert com segurança, mas uma edição
+      // genuína feita nesta janela não pode ser descartada — vai para a fila
+      // e é reenviada quando o remoto carregar (mesclado por id) ou pelo
+      // flush periódico caso o fetch tenha falhado.
+      if (changed.length > 0) {
+        enqueueRequests(changed);
+        setPendingSync(pendingRequestSyncCount());
+      }
+      prevRequests.current = requests;
+      return;
+    }
     if (changed.length === 0) return;
+    const historyByRequest = new Map(
+      newHistoryByRequest
+        .filter(({ newEntries }) => newEntries.length > 0)
+        .map(({ r, newEntries }) => [r.id, { entries: newEntries, fallbackStatus: r.status }])
+    );
     const t = setTimeout(() => {
-      syncRequests(changed, currentUser.id).then((ok) => {
+      syncRequests(changed, currentUser.id, historyByRequest).then((ok) => {
         setPendingSync(pendingRequestSyncCount());
         if (!ok) return;
+        // Só avança o baseline quando o envio é confirmado: se este efeito
+        // tivesse sido cancelado antes de disparar (nova mudança de requests
+        // em menos de 800ms) ou o upsert tivesse falhado, o próximo ciclo
+        // recalcula o diff contra o baseline antigo e inclui esta alteração
+        // — nunca é descartada silenciosamente.
+        prevRequests.current = requests;
         for (const { r, newEntries } of newHistoryByRequest) {
           if (newEntries.length > 0) void insertStatusHistory(r.id, currentUser.id, newEntries, r.status);
         }

@@ -4,12 +4,12 @@ import { Filter, X } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { RequestDetailModal } from '../components/Modals/RequestDetailModal';
-import { STATUS_ORDER } from '../data/mockData';
+import { STATUS_ORDER, computeSkipTarget } from '../data/mockData';
 import { PurchaseRequest, Priority, Sector, Status, HistoryEntry } from '../types';
 import { ValueApproval } from '../types/finance';
 import { sendNotification } from '../utils/notify';
 import { formatPaymentTerms } from '../lib/paymentTerms';
-import { canProjectInstallments, syncRequestFinance } from '../lib/financeSync';
+import { blocksAdvanceForValueApproval, canProjectInstallments, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
 import { AppUser } from '../data/users';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
@@ -95,10 +95,14 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   };
 
   const handleAdvanceStatus = (id: string) => {
+    if (currentUser.role !== 'comprador') return;
     const req = requests.find((r) => r.id === id);
     if (!req) return;
     const idx = STATUS_ORDER.indexOf(req.status);
     if (idx === -1 || idx >= STATUS_ORDER.length - 1) return;
+    // Defesa em profundidade: mesma trava financeira do modal, replicada
+    // aqui para não depender só da UI para bloquear o avanço.
+    if (blocksAdvanceForValueApproval(req)) return;
     const nextStatus = STATUS_ORDER[idx + 1];
     const advanced = entry('Status alterado', req.status, nextStatus);
     const updated = applyChange(id, (r) => ({
@@ -121,8 +125,9 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   };
 
   /**
-   * Pula "Em Rota" ou "Em Serviço" quando não se aplica ao pedido (ex.:
-   * material entregue sem instalação). Só o comprador pode acionar — checado
+   * Pula uma sequência contígua de etapas não aplicáveis ao pedido a partir
+   * do status atual (ex.: material entregue sem instalação pula "Em Rota" E
+   * "Em Serviço" numa única ação). Só o comprador pode acionar — checado
    * aqui também, não só na UI, já que o handler pode ser chamado por
    * qualquer código que tenha a referência.
    */
@@ -130,12 +135,18 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     if (currentUser.role !== 'comprador') return;
     const req = requests.find((r) => r.id === id);
     if (!req) return;
-    const idx = STATUS_ORDER.indexOf(req.status);
-    if (idx === -1 || idx + 2 >= STATUS_ORDER.length) return;
-    const skipped = STATUS_ORDER[idx + 1];
-    if (skipped !== 'Em Rota' && skipped !== 'Em Serviço') return;
-    const nextStatus = STATUS_ORDER[idx + 2];
-    const skipEntry = entry(`Etapa "${skipped}" pulada — não aplicável a este pedido`, req.status, nextStatus);
+    // Defesa em profundidade: mesma trava financeira do modal.
+    if (blocksAdvanceForValueApproval(req)) return;
+    const target = computeSkipTarget(req.status);
+    if (!target) return;
+    const { skipped, nextStatus } = target;
+    const skippedLabel = skipped.map((s) => `"${s}"`).join(' e ');
+    const skipEntry = entry(
+      skipped.length === 1
+        ? `Etapa ${skippedLabel} pulada — não aplicável a este pedido`
+        : `Etapas ${skippedLabel} puladas — não aplicável a este pedido`,
+      req.status, nextStatus
+    );
     const updated = applyChange(id, (r) => ({
       ...r,
       status: nextStatus,
@@ -146,15 +157,19 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
 
     sendNotification({
       title: `⏭️ ${req.number} — ${nextStatus}`,
-      message: `${currentUser.name} pulou a etapa "${skipped}" e avançou a solicitação de ${req.requester} para "${nextStatus}".`,
+      message: `${currentUser.name} pulou ${skipped.length === 1 ? `a etapa ${skippedLabel}` : `as etapas ${skippedLabel}`} e avançou a solicitação de ${req.requester} para "${nextStatus}".`,
       priority: 3,
       tags: ['package'],
     });
   };
 
   const handleCancel = (id: string, reason: string) => {
+    if (currentUser.role !== 'comprador') return;
     const req = requests.find((r) => r.id === id);
-    if (!req || req.status === 'Cancelada' || req.status === 'Finalizado') return;
+    // Defesa em profundidade: uma vez "Comprado" ou além, a compra já foi
+    // efetivada e o cancelamento simples não pode mais zerar a dívida real
+    // com o fornecedor — mesma trava aplicada na UI (canCancel).
+    if (!req || req.status === 'Cancelada' || req.status === 'Finalizado' || isPurchasedOrLater(req.status)) return;
     const cancelledAt = new Date().toISOString();
     const cancelEntry = entry(`Solicitação cancelada — Motivo: ${reason}`, req.status, 'Cancelada');
     const updated = applyChange(id, (r) => ({
@@ -198,6 +213,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
    * quando ainda não existe valor nem condição de pagamento.
    */
   const handleApproveValue = (id: string) => {
+    if (currentUser.role !== 'gestor') return;
     const req = requests.find((r) => r.id === id);
     if (!req || req.valueApproval || !canProjectInstallments(req)) return;
 
@@ -232,6 +248,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   };
 
   const handleApprove = (id: string, approverName: string, approvalId: string) => {
+    if (currentUser.role !== 'gestor') return;
     const req = requests.find((r) => r.id === id);
     setRequests((prev) =>
       prev.map((r) => {

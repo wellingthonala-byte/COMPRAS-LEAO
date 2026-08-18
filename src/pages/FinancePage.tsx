@@ -10,7 +10,7 @@ import { PurchaseRequest, Priority, Sector } from '../types';
 import { InstallmentStatus } from '../types/finance';
 import { AppUser, canViewFinance } from '../data/users';
 import { exportCSV, exportExcel, exportName } from '../utils/export';
-import { monthKeyOf } from '../lib/finance';
+import { monthKeyOf, sumAmounts } from '../lib/finance';
 import { getFinanceSettings } from '../lib/financeSettings';
 import { BackfillPanel } from '../components/Finance/BackfillPanel';
 import { clearFinanceLog, pendingCount, readFinanceLog, useInstallments } from '../lib/financeStore';
@@ -18,7 +18,7 @@ import { reconcile } from '../lib/financeSync';
 import {
   applyFilters, commitmentSummary, EMPTY_FILTERS, EXPORT_HEADERS, exportRows, FinanceFilters,
   filterOptions, groupByRequest, hasActiveFilters, joinInstallments, limboRequests, monthLabelLong,
-  monthlyProjection, rowsOfMonth,
+  monthlyProjection, overdueInstallments, rowsOfMonth,
 } from '../lib/financeQueries';
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtCompact = (v: number) =>
@@ -120,6 +120,8 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
     () => limboRequests(requests, settings.limboDays, todayISO),
     [requests, settings.limboDays, todayISO]
   );
+  const overdue = useMemo(() => overdueInstallments(rows, todayISO), [rows, todayISO]);
+  const overdueTotal = sumAmounts(overdue.map((r) => r.installment.amount));
 
   const chartData = months.map((m) => ({
     label: m.label,
@@ -186,12 +188,12 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
           )}
 
           {/* KPIs */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
             <Kpi
               icon={PiggyBank} tone="text-violet-600"
               label={`Comprometido ${MONTHS_AHEAD} meses`}
               value={fmtBRL(summary.total)}
-              note={`${rows.filter((r) => r.installment.status !== 'Cancelado').length} parcela(s)`}
+              note={`${months.reduce((s, m) => s + m.count, 0)} parcela(s)`}
             />
             <Kpi
               icon={TrendingUp} tone="text-violet-500"
@@ -202,6 +204,12 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
               icon={ShieldCheck} tone="text-teal-600"
               label="Confirmado" value={fmtBRL(summary.confirmado)}
               note="Compra efetivada, datas definitivas"
+            />
+            <Kpi
+              icon={AlertTriangle} tone={overdue.length > 0 ? 'text-red-600' : 'text-slate-400'}
+              label="Vencido e em aberto"
+              value={fmtBRL(overdueTotal)}
+              note={overdue.length > 0 ? `${overdue.length} parcela(s) vencida(s), sem baixa` : 'Nenhuma parcela vencida'}
             />
             <Kpi
               icon={Hourglass} tone={limbo.length > 0 ? 'text-red-600' : 'text-slate-400'}
@@ -459,16 +467,20 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
             )}
           </div>
 
-          {/* Backfill dos pedidos anteriores ao módulo */}
-          <BackfillPanel
-            requests={requests}
-            onApply={(patched) => {
-              const byId = new Map(patched.map((r) => [r.id, r]));
-              setRequests((prev) => prev.map((r) => byId.get(r.id) ?? r));
-              setLog(readFinanceLog());
-              setQueued(pendingCount());
-            }}
-          />
+          {/* Backfill dos pedidos anteriores ao módulo — grava compromisso
+              financeiro real, então fica restrito ao gestor. O papel
+              'financeiro' enxerga a projeção mas não aprova nem cota. */}
+          {currentUser.role === 'gestor' && (
+            <BackfillPanel
+              requests={requests}
+              onApply={(patched) => {
+                const byId = new Map(patched.map((r) => [r.id, r]));
+                setRequests((prev) => prev.map((r) => byId.get(r.id) ?? r));
+                setLog(readFinanceLog());
+                setQueued(pendingCount());
+              }}
+            />
+          )}
 
           {/* Log de erros */}
           {log.length > 0 && (

@@ -1,6 +1,6 @@
 import { PurchaseRequest, Priority, Sector } from '../types';
 import { Installment, InstallmentStatus } from '../types/finance';
-import { diffDays, monthKeyOf, sumAmounts } from './finance';
+import { diffDays, localDayOf, monthKeyOf, sumAmounts } from './finance';
 import { isPurchasedOrLater } from './financeSync';
 
 /* ====================================================================
@@ -236,6 +236,27 @@ export function commitmentSummary(rows: InstallmentRow[], todayISO: string, mont
 }
 
 /* ------------------------------------------------------------------ */
+/* Parcelas vencidas                                                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Parcelas com vencimento no passado que ainda não foram baixadas.
+ *
+ * `monthlyProjection` só enxerga do mês corrente em diante — uma parcela
+ * vencida em Previsto/Confirmado simplesmente não entra em nenhum bucket e
+ * some de todos os totais ("Comprometido", "Previsto", "Confirmado", o
+ * gráfico de 12 meses). Como não existe UI para dar baixa em 'Pago', essa
+ * é a única forma de o gestor enxergar o dinheiro comprometido que já
+ * venceu e continua em aberto.
+ */
+export function overdueInstallments(rows: InstallmentRow[], todayISO: string): InstallmentRow[] {
+  const today = localDayOf(todayISO);
+  return rows.filter(
+    (r) => r.installment.dueDate < today && r.installment.status !== 'Pago' && r.installment.status !== 'Cancelado'
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Limbo: aprovado e não comprado                                      */
 /* ------------------------------------------------------------------ */
 
@@ -253,14 +274,14 @@ export interface LimboRequest {
  * já comprometeu o caixa, mas a compra não aconteceu.
  */
 export function limboRequests(requests: PurchaseRequest[], days: number, todayISO: string): LimboRequest[] {
-  const today = todayISO.slice(0, 10);
+  const today = localDayOf(todayISO);
   return requests
     .filter((r) => r.valueApproval && r.status !== 'Cancelada' && !isPurchasedOrLater(r.status))
     .map((r) => ({
       request: r,
       buyer: buyerOf(r),
       approvedAt: r.valueApproval!.approvedAt,
-      daysWaiting: diffDays(r.valueApproval!.approvedAt.slice(0, 10), today),
+      daysWaiting: diffDays(localDayOf(r.valueApproval!.approvedAt), today),
       committedValue: r.valueApproval!.approvedValue,
     }))
     .filter((l) => l.daysWaiting >= days)
@@ -308,7 +329,7 @@ export function exportRows(rows: InstallmentRow[]): (string | number)[][] {
     r.status,
     r.valueApproval ? r.valueApproval.approvedValue.toFixed(2).replace('.', ',') : '',
     r.valueApproval?.approvedBy ?? '',
-    r.valueApproval ? dateBR(r.valueApproval.approvedAt) : '',
+    r.valueApproval ? dateBR(localDayOf(r.valueApproval.approvedAt)) : '',
     i.divergenceNote ?? '',
   ]);
 }

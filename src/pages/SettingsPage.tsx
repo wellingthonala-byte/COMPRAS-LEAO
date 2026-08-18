@@ -257,6 +257,25 @@ function NoPermission() {
   );
 }
 
+function PermissionsUnavailable({ error, retrying, onRetry }: { error: string; retrying: boolean; onRetry: () => void }) {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center">
+      <AlertTriangle size={28} className="text-amber-400 mx-auto mb-3" />
+      <h3 className="font-semibold text-slate-700 mb-1">Não foi possível verificar suas permissões</h3>
+      <p className="text-sm text-slate-400 max-w-sm mx-auto mb-4">
+        A matriz de permissões não carregou ({error}). Isso é uma falha técnica, não uma negação de acesso — tente novamente.
+      </p>
+      <button
+        onClick={onRetry}
+        disabled={retrying}
+        className="inline-flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg text-xs font-medium"
+      >
+        {retrying ? 'Tentando novamente...' : 'Tentar novamente'}
+      </button>
+    </div>
+  );
+}
+
 /* ================================================================== */
 /* Página                                                              */
 /* ================================================================== */
@@ -281,6 +300,8 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   const [toast, setToast] = useState<string | null>(null);
   const [users] = useState<AppUser[]>(loadUsers);
   const [rolePerms, setRolePerms] = useState<Map<string, boolean>>(new Map());
+  const [permsError, setPermsError] = useState<string | null>(null);
+  const [permsRetrying, setPermsRetrying] = useState(false);
   const [realUsers, setRealUsers] = useState<RealUser[]>([]);
   const [realUsersLoading, setRealUsersLoading] = useState(true);
   const [realUsersError, setRealUsersError] = useState<string | null>(null);
@@ -297,6 +318,20 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   };
 
   useEffect(() => { loadRealUsers(); }, []);
+
+  // Carrega a matriz de permissões (Perfis e Permissões) — controla os cadeados.
+  // Reaproveitável para "Tentar novamente": uma falha aqui NÃO pode significar
+  // "acesso negado" para ninguém, inclusive admin/gestor — ver `permsError` abaixo.
+  const loadRolePerms = (isRetry = false) => {
+    if (isRetry) setPermsRetrying(true);
+    setPermsError(null);
+    fetchRolePermissions()
+      .then((rows) => setRolePerms(buildPermissionMap(rows)))
+      .catch((e) => setPermsError(e instanceof Error ? e.message : 'Falha ao carregar a matriz de permissões.'))
+      .finally(() => { if (isRetry) setPermsRetrying(false); else setPermsLoading(false); });
+  };
+
+  useEffect(() => { loadRolePerms(false); }, []);
 
   // Carrega as configurações reais do Supabase (o cache local só serve para
   // pintar a tela na hora enquanto isso acontece).
@@ -327,22 +362,6 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Carrega a matriz de permissões (Perfis e Permissões) — controla os cadeados.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const rows = await fetchRolePermissions();
-        if (!cancelled) setRolePerms(buildPermissionMap(rows));
-      } catch {
-        // Falhou: abas críticas continuam bloqueadas por segurança.
-      } finally {
-        if (!cancelled) setPermsLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
   }, []);
 
   const saveNow = async (data: AppSettings) => {
@@ -402,7 +421,17 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   }, [search, favorites]);
 
   const activeSection = SECTIONS.find((s) => s.key === active)!;
-  const blocked = !!activeSection.critical && !isModuleAllowed(rolePerms, currentUser.role, activeSection.key);
+  // Fallback duro: 'perfis' é a própria tela que corrige a matriz de permissões —
+  // travá-la junto com o resto (matriz vazia, erro de rede, ou até uma regra
+  // deliberada mal configurada) eliminaria qualquer chance de autorrecuperação
+  // pela UI. Gestor sempre enxerga esta aba, independente do que a matriz diga.
+  const isPerfisHardFallback = activeSection.key === 'perfis' && currentUser.role === 'gestor';
+  const blocked = !!activeSection.critical && !isPerfisHardFallback
+    && !isModuleAllowed(rolePerms, currentUser.role, activeSection.key);
+  // A matriz não carregou (erro técnico) — diferente de "carregou e nega o acesso".
+  // Mostrar "Acesso restrito" aqui seria enganoso (parece negação deliberada) e,
+  // pior, esconderia a própria aba 'perfis' que resolveria o problema.
+  const permissionsUnavailable = !!permsError && !!activeSection.critical && !isPerfisHardFallback;
 
   if (loading) {
     return (
@@ -508,7 +537,9 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
               </span>
             </div>
 
-            {blocked ? <NoPermission /> : (
+            {permissionsUnavailable ? (
+              <PermissionsUnavailable error={permsError!} retrying={permsRetrying} onRetry={() => loadRolePerms(true)} />
+            ) : blocked ? <NoPermission /> : (
               <>
                 {active === 'geral' && <GeneralSection settings={settings} patch={patch} showToast={showToast} />}
                 {active === 'identidade' && <BrandingSection settings={settings} patch={patch} />}
@@ -781,6 +812,14 @@ function ProfilesSection({ rolePerms, setRolePerms, showToast, currentUserRole }
     // (o front colapsa admin em gestor no login) — mantém os dois sincronizados
     // para não criar uma regra que parece aplicada mas não é.
     const affected = role === 'admin' || role === 'gestor' ? ['admin', 'gestor'] : [role];
+
+    // Trava de segurança: desmarcar 'perfis' para o próprio papel logado tranca
+    // esta própria tela (a única capaz de reverter a matriz) sem saída pela UI.
+    if (module === 'perfis' && !next && affected.some((r) => dbRolesFor(currentUserRole).includes(r))) {
+      showToast('Esta ação removeria seu próprio acesso a Perfis e Permissões, sem forma de reverter pela interface. Peça a outro gestor ou ajuste direto no banco.');
+      return;
+    }
+
     setSaving(cellKey);
     try {
       await Promise.all(affected.map((r) => saveRolePermission(r, module, next)));
@@ -818,6 +857,8 @@ function ProfilesSection({ rolePerms, setRolePerms, showToast, currentUserRole }
                   </td>
                   {CRITICAL_MODULES.map((m) => {
                     const cellKey = `${r.key}:${m.key}`;
+                    const affected = r.key === 'admin' || r.key === 'gestor' ? ['admin', 'gestor'] : [r.key];
+                    const isSelfLockCell = m.key === 'perfis' && affected.some((x) => dbRolesFor(currentUserRole).includes(x));
                     return (
                       <td key={m.key} className="px-2 py-2 text-center">
                         <input
@@ -826,6 +867,7 @@ function ProfilesSection({ rolePerms, setRolePerms, showToast, currentUserRole }
                           disabled={saving === cellKey}
                           onChange={() => toggle(r.key, m.key)}
                           aria-label={`${r.label} — ${m.label}`}
+                          title={isSelfLockCell ? 'Controla seu próprio acesso a esta tela — não pode ser desmarcada por aqui.' : undefined}
                           className="accent-violet-600 cursor-pointer disabled:opacity-40"
                         />
                       </td>

@@ -4,10 +4,10 @@ import { STATUS_ORDER } from '../data/mockData';
 import { isPaymentTermsValid } from './paymentTerms';
 import {
   cancelInstallments, chooseConfirmedBaseDate, computeInstallments, formatDivergenceNote,
-  recalcInstallments, valueDivergence,
+  localDayOf, recalcInstallments, valueDivergence,
 } from './finance';
 import { getHolidaySet } from './financeSettings';
-import { installmentsOf, logFinanceError, saveInstallments } from './financeStore';
+import { installmentsOf, installmentsReady, logFinanceError, saveInstallments } from './financeStore';
 
 /* ====================================================================
    Ligação entre o fluxo do Kanban e as parcelas.
@@ -30,6 +30,20 @@ export function isPurchasedOrLater(status: Status): boolean {
   return i >= 0 && i >= PURCHASED_IDX;
 }
 
+/**
+ * O pedido conta como compra efetivamente registrada?
+ *
+ * Usado pelo Dashboard e pelos Relatórios para agregar dinheiro (Valor
+ * Total, ranking de fornecedores, gastos por mês/setor): um pedido
+ * cancelado nunca é compra, e um valor só é "negociado" de fato quando o
+ * pedido passou por "Comprado" — antes disso é cotação, que pode mudar ou
+ * nem virar compra. Mesmo critério que o motor financeiro usa para gerar
+ * parcela 'Confirmado' em vez de 'Previsto' (ver `isPurchasedOrLater`).
+ */
+export function countsAsPurchase(request: PurchaseRequest): boolean {
+  return request.status !== 'Cancelada' && isPurchasedOrLater(request.status);
+}
+
 /** Quando o card entrou em "Comprado", segundo o histórico. */
 export function purchasedAtOf(request: PurchaseRequest): string | undefined {
   return [...request.history].reverse().find((h) => h.to === 'Comprado')?.date;
@@ -38,6 +52,23 @@ export function purchasedAtOf(request: PurchaseRequest): string | undefined {
 /** O pedido tem tudo que o cálculo precisa? */
 export function canProjectInstallments(request: PurchaseRequest): boolean {
   return request.value !== undefined && request.value > 0 && isPaymentTermsValid(request.paymentTerms);
+}
+
+/**
+ * Trava financeira central: o pedido pode avançar (ou pular) de status?
+ *
+ * Um pedido em "Em Cotação" não pode sair de lá sem valor e condição de
+ * pagamento preenchidos — senão o card avança sem nunca ter passado pela
+ * janela de aprovação de valor. E qualquer pedido "Comprado" em diante que
+ * já tenha valor+condição válidos (pedido legado ou editado fora do fluxo)
+ * não pode seguir adiante sem a aprovação de valor do gestor, mesmo que já
+ * tenha deixado "Em Cotação" há tempos. Compartilhada entre a UI (que
+ * também mostra a mensagem) e os handlers do Kanban (defesa em profundidade
+ * — a UI sozinha não é suficiente).
+ */
+export function blocksAdvanceForValueApproval(request: PurchaseRequest): boolean {
+  if (request.status === 'Cancelada' || request.valueApproval) return false;
+  return request.status === 'Em Cotação' || canProjectInstallments(request);
 }
 
 /**
@@ -75,13 +106,14 @@ export function deriveInstallments(
         request.fiscalNoteDate,
         purchasedAtOf(request) ?? request.valueApproval.approvedAt,
       )
-    : { baseDate: request.valueApproval.approvedAt.slice(0, 10), source: 'aprovacao_valor' as const };
+    : { baseDate: localDayOf(request.valueApproval.approvedAt), source: 'aprovacao_valor' as const };
 
-  // Divergência só faz sentido depois da compra, comparando com o aprovado
-  const divergence = confirmed
-    ? valueDivergence(request.valueApproval.approvedValue, total)
-    : undefined;
-  const divergenceNote = divergence?.hasDivergence ? formatDivergenceNote(divergence) : undefined;
+  // Divergência é avaliada sempre que há aprovação de valor, não só depois
+  // da compra: o comprador pode editar valor/condição a qualquer momento
+  // após a aprovação, e a nota precisa aparecer assim que o valor projetado
+  // deixar de bater com o aprovado — mesmo com o pedido ainda em cotação.
+  const divergence = valueDivergence(request.valueApproval.approvedValue, total);
+  const divergenceNote = divergence.hasDivergence ? formatDivergenceNote(divergence) : undefined;
 
   if (existing.length === 0) {
     return computeInstallments({
@@ -107,6 +139,10 @@ export function deriveInstallments(
     holidays,
     now,
     divergenceNote,
+    // A divergência acima acabou de ser reavaliada com o valor aprovado —
+    // grava sempre, inclusive undefined, para limpar uma nota antiga que
+    // não vale mais (ex.: valor comprado corrigido de volta ao aprovado).
+    divergenceKnown: true,
   });
 }
 
@@ -121,7 +157,7 @@ function fingerprint(i: Installment): string {
   return JSON.stringify([
     i.number, i.count, i.amount, i.dueDate, i.offsetDays, i.baseDate, i.baseDateSource,
     i.status, i.paymentTermsLabel, i.paidAt ?? null, i.paidAmount ?? null,
-    i.cancelledAt ?? null, i.divergenceNote ?? null,
+    i.cancelledAt ?? null, i.divergenceNote ?? null, i.cancelReason ?? null,
   ]);
 }
 
@@ -178,6 +214,12 @@ export interface ReconcileReport {
  * diferença. Roda ao abrir a tela do Financeiro.
  */
 export async function reconcile(requests: PurchaseRequest[], opts: SyncOptions = {}): Promise<ReconcileReport> {
+  // O cache de parcelas (financeStore) só está confiável depois que a carga
+  // inicial do servidor resolve — initInstallments() é disparada sem await
+  // em App.tsx. Rodar a reconciliação antes disso vê `existing` vazio para
+  // pedidos que já têm parcelas no servidor e recria tudo com ids novos.
+  await installmentsReady();
+
   const now = opts.now ?? new Date().toISOString();
   const holidays = opts.holidays ?? getHolidaySet();
   const pending: Installment[] = [];
@@ -215,7 +257,7 @@ export function previewInstallments(request: PurchaseRequest, opts: SyncOptions 
     requestId: request.id,
     total: request.value as number,
     terms: request.paymentTerms as PaymentTerms,
-    baseDate: now.slice(0, 10),
+    baseDate: localDayOf(now),
     baseDateSource: 'aprovacao_valor',
     holidays: opts.holidays ?? getHolidaySet(),
     now,

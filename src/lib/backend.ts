@@ -1,6 +1,6 @@
 import { getSupabase } from './supabase';
 import { PurchaseRequest, Status, Priority, Sector, Item, HistoryEntry } from '../types';
-import { ServiceOrder, OSStatus } from '../types/serviceOrders';
+import { ServiceOrder, OSStatus, formatOSNumber } from '../types/serviceOrders';
 import { BaseDateSource, Installment, InstallmentStatus } from '../types/finance';
 import { AppUser, Role } from '../data/users';
 
@@ -258,18 +258,16 @@ const SERVICE_TYPE_LABEL: Record<string, string> = {
 function rowToOrder(row: DBOsRow, profileNames: Map<string, string>): ServiceOrder {
   if (row.extra && (row.extra as { doc?: ServiceOrder }).doc) {
     const doc = (row.extra as { doc: ServiceOrder }).doc;
-    const dDoc = new Date(row.created_at);
     return {
       ...doc,
       id: row.id,
-      number: `OS-${String(row.order_number).padStart(3, '0')}/${String(dDoc.getMonth() + 1).padStart(2, '0')}/${String(dDoc.getFullYear()).slice(-2)}`,
+      number: formatOSNumber(row.order_number, row.created_at),
     };
   }
   const requester = profileNames.get(row.requester_id) ?? 'Usuário';
-  const d = new Date(row.created_at);
   return {
     id: row.id,
-    number: `OS-${String(row.order_number).padStart(3, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`,
+    number: formatOSNumber(row.order_number, row.created_at),
     title: row.description?.split('\n')[0]?.slice(0, 80) || `${SERVICE_TYPE_LABEL[row.service_type] ?? 'Serviço'} — ${row.provider_name || 'sem prestador'}`,
     description: row.description ?? '',
     type: row.service_type === 'manutencao' ? 'Corretiva' : 'Melhoria',
@@ -289,6 +287,15 @@ function rowToOrder(row: DBOsRow, profileNames: Map<string, string>): ServiceOrd
     observations: [row.observations, row.paid_value ? `Valor pago: R$ ${row.paid_value} (${row.payment_status})` : null].filter(Boolean).join(' · ') || undefined,
     materials: [], labor: [], comments: [], checklist: [],
     history: [{ id: `h-${row.id}`, date: row.created_at, user: requester, action: 'O.S. criada (importada do sistema anterior)', to: OS_STATUS_DB_TO_UI[row.status] }],
+    // Preserva os valores originais das colunas normalizadas que o front não
+    // edita — ver FINDING 23. upsertServiceOrders reenvia estes valores em
+    // vez de service_type fixo / payment_status derivado do status da O.S.
+    importedMeta: {
+      serviceType: row.service_type,
+      paymentStatus: row.payment_status,
+      paidValue: row.paid_value,
+      executionDeadline: row.execution_deadline,
+    },
   };
 }
 
@@ -309,38 +316,57 @@ export async function fetchServiceOrders(): Promise<ServiceOrder[] | null> {
   }
 }
 
-export async function upsertServiceOrders(allOrders: ServiceOrder[]): Promise<void> {
+/**
+ * Grava/atualiza ordens de serviço: colunas principais + documento completo
+ * em extra.doc. Mesmo padrão de upsertRequests (ver comentário lá): lança em
+ * caso de falha — quem chama (serviceOrderSyncQueue) precisa saber do erro
+ * para enfileirar o reprocessamento, em vez de engolir em console.warn e
+ * deixar o módulo parar de salvar em silêncio (FINDING 19).
+ *
+ * Devolve o número definitivo (order_number, atribuído pela sequência do
+ * banco) de cada O.S. sincronizada, para resolver o rótulo provisório
+ * exibido enquanto o insert não tinha retornado (FINDING 20).
+ */
+export async function upsertServiceOrders(
+  allOrders: ServiceOrder[],
+  requesterId?: string,
+): Promise<{ id: string; number: string }[]> {
   const orders = allOrders.filter((o) => UUID_RE.test(o.id));
-  if (orders.length === 0) return;
-  try {
-    const sb = getSupabase();
-    const uid = (await sb.auth.getUser()).data.user?.id;
-    if (!uid) return;
-    const payload = orders.map((o) => {
-      return {
-        id: o.id,
-        requester_id: uid,
-        service_type: 'manutencao',
-        description: o.description || o.title,
-        provider_name: o.technician || '',
-        sector: o.costCenter,
-        priority: o.priority === 'Crítica' ? 'maquina_parada' : o.priority === 'Alta' ? 'emergencia' : 'nao_urgente',
-        agreed_value: o.estimatedValue ?? null,
-        payment_status: o.status === 'Faturada' ? 'pago' : 'pendente',
-        execution_deadline: o.dueDate || null,
-        status: OS_STATUS_UI_TO_DB[o.status] ?? 'aberta',
-        observations: o.observations ?? null,
-        created_at: o.openedAt,
-        closing_date: o.completedAt ?? null,
-        updated_at: new Date().toISOString(),
-        extra: { doc: o },
-      };
-    });
-    const { error } = await sb.from('service_orders').upsert(payload);
-    if (error) throw error;
-  } catch (e) {
-    console.warn('[backend] upsertServiceOrders falhou (dados seguem no cache local):', e);
-  }
+  if (orders.length === 0) return [];
+  const sb = getSupabase();
+  const uid = requesterId ?? (await sb.auth.getUser()).data.user?.id;
+  if (!uid) throw new Error('Usuário não autenticado');
+  const payload = orders.map((o) => {
+    // Ordens importadas do sistema antigo trazem os valores originais das
+    // colunas que o front não modela em importedMeta — reenvia-los em vez de
+    // sobrescrever com o fixo/derivado do app (FINDING 23).
+    const meta = o.importedMeta;
+    return {
+      id: o.id,
+      requester_id: uid,
+      service_type: meta?.serviceType ?? 'manutencao',
+      description: o.description || o.title,
+      provider_name: o.technician || '',
+      sector: o.costCenter,
+      priority: o.priority === 'Crítica' ? 'maquina_parada' : o.priority === 'Alta' ? 'emergencia' : 'nao_urgente',
+      agreed_value: o.estimatedValue ?? null,
+      payment_status: meta?.paymentStatus ?? (o.status === 'Faturada' ? 'pago' : 'pendente'),
+      paid_value: meta?.paidValue ?? null,
+      execution_deadline: meta ? (meta.executionDeadline ?? null) : (o.dueDate || null),
+      status: OS_STATUS_UI_TO_DB[o.status] ?? 'aberta',
+      observations: o.observations ?? null,
+      created_at: o.openedAt,
+      closing_date: o.completedAt ?? null,
+      updated_at: new Date().toISOString(),
+      extra: { doc: o },
+    };
+  });
+  const { data, error } = await sb.from('service_orders').upsert(payload).select('id, order_number, created_at');
+  if (error) throw error;
+  return (data ?? []).map((r: { id: string; order_number: number; created_at: string }) => ({
+    id: r.id,
+    number: formatOSNumber(r.order_number, r.created_at),
+  }));
 }
 
 /* ================================================================== */
@@ -466,10 +492,17 @@ export async function loginWithSupabase(email: string, password: string): Promis
   ]);
   const name = profile?.full_name ?? data.user.email ?? 'Usuário';
   const dbRoles: string[] = (roles ?? []).map((r: { role: string }) => r.role);
-  // admin herda a visão do gestor (inclusive a projeção financeira consolidada)
+  // admin herda a visão do gestor (inclusive a projeção financeira consolidada).
+  // 'compras' vem antes de 'financeiro' na precedência: o papel operacional é
+  // mais restritivo em capacidades (avançar pedido, cancelar, editar cotação,
+  // pular etapa) e não pode ficar sem elas quando alguém acumula os dois
+  // papéis — 'financeiro' é só consultivo (FINDING 27). Mitigação pontual:
+  // a correção completa exigiria guardar dbRoles: string[] e derivar
+  // capacidades da união dos papéis, o que toca comparações `role === 'x'`
+  // pelo projeto inteiro — fora do escopo desta correção.
   const role: Role = dbRoles.includes('admin') || dbRoles.includes('gestor') ? 'gestor'
-    : dbRoles.includes('financeiro') ? 'financeiro'
-    : dbRoles.includes('compras') ? 'comprador' : 'solicitante';
+    : dbRoles.includes('compras') ? 'comprador'
+    : dbRoles.includes('financeiro') ? 'financeiro' : 'solicitante';
   return {
     id: uid,
     name,
@@ -606,6 +639,23 @@ export async function runMigration(oldUrl: string, oldSecret: string, newUrl: st
     user_id: remap(h.user_id) ?? fallbackUid,
   })), log);
 
+  // ⚠️ FINDING 16: as linhas acima preservam request_number/order_number
+  // originais (1..N) via spread, mas em nenhum momento avançamos as
+  // sequências que geram esses números para registros NOVOS
+  // (public.purchase_requests_request_number_seq /
+  // public.service_orders_order_number_seq — default nextval, coluna
+  // unique). Sem avançar, as sequências continuam em 1 e a primeira
+  // solicitação/O.S. criada depois da migração colide em unique constraint.
+  // Este script fala com o banco só via REST/PostgREST (função `rest()`
+  // acima) — não há aqui nenhum mecanismo para rodar `select setval(...)`
+  // (não existe RPC arbitrária exposta no schema; ver supabase/README.md).
+  // Por isso NÃO dá para automatizar esse passo aqui: rode manualmente no
+  // SQL Editor do projeto novo, logo após esta migração terminar:
+  //   select setval('public.purchase_requests_request_number_seq',
+  //     coalesce((select max(request_number) from public.purchase_requests), 0) + 1, false);
+  //   select setval('public.service_orders_order_number_seq',
+  //     coalesce((select max(order_number) from public.service_orders), 0) + 1, false);
+  log('⚠️ IMPORTANTE — passo manual pendente: rode no SQL Editor do projeto novo o setval das sequências de numeração (request_number e order_number) — veja o comentário acima desta linha em src/lib/backend.ts ou a seção "Pós-migração obrigatório" em supabase/README.md. Sem isso, a primeira solicitação/O.S. nova após a migração falha por colisão de unique constraint.');
   log('✅ Migração concluída! Todos os usuários foram criados com a senha temporária: ' + MIGRATION_DEFAULT_PASSWORD);
   log('O banco antigo NÃO foi modificado. Recomendado: resetar a service key do projeto antigo no painel.');
 }

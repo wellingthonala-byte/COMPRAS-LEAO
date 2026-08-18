@@ -2,7 +2,7 @@ import { PurchaseRequest } from '../types';
 import { Installment, PaymentTerms, ValueApproval } from '../types/finance';
 import { formatPaymentTerms, isPaymentTermsValid, PAYMENT_TERMS_PRESETS } from './paymentTerms';
 import { sumAmounts } from './finance';
-import { deriveInstallments } from './financeSync';
+import { deriveInstallments, isPurchasedOrLater } from './financeSync';
 import { getFinanceSettings, getHolidaySet } from './financeSettings';
 import { saveInstallments } from './financeStore';
 
@@ -116,13 +116,21 @@ export function planBackfill(
       skipped.push({ request, reason: 'Sem valor cotado' });
       continue;
     }
+    if (!request.valueApproval && !isPurchasedOrLater(request.status)) {
+      // Pedido ainda vivo no fluxo, antes de "Comprado": o gestor ainda não
+      // aprovou o valor. Fabricar a aprovação aqui usurparia essa decisão —
+      // o backfill só reconstrói histórico de pedidos que já foram comprados
+      // antes deste módulo existir, nunca antecipa uma aprovação pendente.
+      skipped.push({ request, reason: 'Aguardando aprovação de valor do gestor' });
+      continue;
+    }
 
     const synthesizedTerms = !isPaymentTermsValid(request.paymentTerms);
     const terms = synthesizedTerms ? fallbackTerms : (request.paymentTerms as PaymentTerms);
     const synthesizedApproval = !request.valueApproval;
 
     const valueApproval: ValueApproval = request.valueApproval ?? {
-      approvedBy: request.approvedBy ?? 'Backfill',
+      approvedBy: 'Backfill (retroativo)',
       approvalId: 'backfill',
       approvedAt: inferApprovalDate(request),
       approvedValue: request.value,

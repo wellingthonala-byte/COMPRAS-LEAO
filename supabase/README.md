@@ -37,6 +37,28 @@ O schema real é o do `clone-schema.sql`: `purchase_requests` com `id uuid`,
 
 **Não execute `schema.sql`.** Ele foi mantido apenas como registro histórico.
 
+## Pós-migração obrigatório: avançar as sequências de numeração
+
+A migração (`runMigration`, em `src/lib/backend.ts`, roda no navegador) copia
+`purchase_requests` e `service_orders` preservando `request_number` /
+`order_number` originais do projeto antigo. Ela **não avança** as sequências
+que geram esses números para registros novos — o script só fala com o banco
+via REST/PostgREST (CRUD em tabelas), e não há RPC arbitrária exposta no
+schema para rodar SQL de sequência. Sem esse passo, as sequências continuam
+em 1 enquanto as linhas migradas ocupam 1..N, e a primeira solicitação/O.S.
+criada depois da migração colide na unique constraint (e cada tentativa
+falha queima um valor da sequência, já que `nextval` não é transacional).
+
+Rode manualmente no **SQL Editor** do projeto novo, logo depois que a
+migração terminar:
+
+```sql
+select setval('public.purchase_requests_request_number_seq',
+  coalesce((select max(request_number) from public.purchase_requests), 0) + 1, false);
+select setval('public.service_orders_order_number_seq',
+  coalesce((select max(order_number) from public.service_orders), 0) + 1, false);
+```
+
 ## Onde os dados realmente ficam
 
 Ponto importante para qualquer script que leia valores de solicitações: o

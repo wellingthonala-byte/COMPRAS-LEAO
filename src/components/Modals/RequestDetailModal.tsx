@@ -6,13 +6,13 @@ import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
 import { PaymentTerms } from '../../types/finance';
 import { formatPaymentTerms, isPaymentTermsValid } from '../../lib/paymentTerms';
-import { canProjectInstallments, previewInstallments } from '../../lib/financeSync';
+import { blocksAdvanceForValueApproval, canProjectInstallments, isPurchasedOrLater, previewInstallments } from '../../lib/financeSync';
 import { PaymentTermsField } from '../UI/PaymentTermsField';
 import { AppUser } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
 import { Avatar } from '../UI/Avatar';
-import { STATUS_ORDER } from '../../data/mockData';
+import { STATUS_ORDER, computeSkipTarget } from '../../data/mockData';
 
 interface RequestDetailModalProps {
   request: PurchaseRequest;
@@ -47,11 +47,19 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   const isCancelled = request.status === 'Cancelada';
   const isFinalized = request.status === 'Finalizado';
 
-  // A aprovação de valor acontece na cotação, quando valor e condição de
-  // pagamento já existem — a aprovação de mérito acima ocorre antes disso.
+  // A aprovação de valor nasce assim que valor + condição de pagamento
+  // existem — normalmente na cotação, mas também vale para pedidos
+  // "Comprado" em diante que ganharam valor fora do fluxo (regularização),
+  // por isso não depende do status ser exatamente 'Em Cotação'. Enquanto o
+  // pedido ainda está em cotação sem valor preenchido, o painel também
+  // aparece (em modo informativo) para deixar claro o que falta.
   const hasValueApproval = !!request.valueApproval;
   const canProject = canProjectInstallments(request);
-  const isValueApprovalStep = !isCancelled && (request.status === 'Em Cotação' || hasValueApproval);
+  const isValueApprovalStep = !isCancelled && (hasValueApproval || canProject || request.status === 'Em Cotação');
+  // Trava única, compartilhada com o KanbanPage (defesa em profundidade):
+  // sem valor+condição em 'Em Cotação', ou sem aprovação de valor em
+  // 'Comprado' e além, o pedido não pode avançar.
+  const valueApprovalBlocksAdvance = blocksAdvanceForValueApproval(request);
   const preview = useMemo(
     () => (isValueApprovalStep && !hasValueApproval && canProject ? previewInstallments(request) : []),
     [isValueApprovalStep, hasValueApproval, canProject, request]
@@ -60,16 +68,16 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   const canAdvance = currentIdx >= 0 && currentIdx < STATUS_ORDER.length - 1 && totalOpenObjections === 0;
 
   // "Em Rota" e "Em Serviço" nem sempre se aplicam (ex.: material entregue
-  // sem instalação). Só o comprador pode pular — quem move o card na prática.
-  const nextStatus = currentIdx >= 0 ? STATUS_ORDER[currentIdx + 1] : undefined;
-  const canSkipNext =
-    canAdvance &&
-    currentUser.role === 'comprador' &&
-    currentIdx + 2 < STATUS_ORDER.length &&
-    (nextStatus === 'Em Rota' || nextStatus === 'Em Serviço');
+  // sem instalação). Pode pular mais de uma casa numa ação só, se as etapas
+  // seguintes também forem inaplicáveis. Só o comprador pode pular — quem
+  // move o card na prática.
+  const skipTarget = currentUser.role === 'comprador' ? computeSkipTarget(request.status) : null;
+  const canSkipNext = canAdvance && !!skipTarget;
 
-  // Apenas o comprador pode cancelar solicitações
-  const canCancel = !isCancelled && !isFinalized && currentUser.role === 'comprador';
+  // Uma vez "Comprado" ou além, a compra já foi efetivada com o fornecedor —
+  // o cancelamento simples não pode mais zerar parcelas de dívida real.
+  const purchasedOrLater = isPurchasedOrLater(request.status);
+  const canCancel = !isCancelled && !isFinalized && !purchasedOrLater && currentUser.role === 'comprador';
 
   const [approvalError, setApprovalError] = useState('');
   const [cancelling, setCancelling] = useState(false);
@@ -760,6 +768,24 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
             </div>
           )}
 
+          {/* Alerta: pedido já comprado (ou além) sem aprovação de valor — hoje
+              isso só acontece com pedidos legados/editados fora do fluxo normal,
+              já que o gate abaixo impede que novos pedidos cheguem nesse estado. */}
+          {!isCancelled && purchasedOrLater && !hasValueApproval && (
+            <div className="rounded-xl p-4 border bg-red-50 border-red-300">
+              <div className="flex items-center gap-2 mb-1.5">
+                <AlertCircle size={16} className="text-red-600" />
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-red-700">Compra sem aprovação de valor</h3>
+              </div>
+              <p className="text-xs text-red-700">
+                Este pedido está em <strong>{request.status}</strong> mas nunca teve o valor aprovado pelo gestor — o compromisso
+                financeiro não existe na projeção de parcelas.{canProject
+                  ? ' Peça ao gestor para aprovar o valor no bloco abaixo.'
+                  : ' Preencha valor e condição de pagamento no bloco Fornecedor para poder regularizar.'}
+              </p>
+            </div>
+          )}
+
           {/* Aprovação de Valor do Gestor — onde nasce o compromisso financeiro */}
           {isValueApprovalStep && (
             <div className={`rounded-xl p-4 border ${hasValueApproval ? 'bg-teal-50 border-teal-200' : canProject ? 'bg-yellow-50 border-yellow-200' : 'bg-slate-50 border-slate-200'}`}>
@@ -932,6 +958,11 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   Cancelar Solicitação
                 </button>
               )}
+              {!isCancelled && !isFinalized && purchasedOrLater && currentUser.role === 'comprador' && (
+                <p className="text-xs text-slate-400 max-w-xs">
+                  Compra já efetivada — cancelamento simples indisponível a partir de "Comprado".
+                </p>
+              )}
             </div>
             {isCancelled ? (
               <span className="flex items-center gap-2 bg-red-100 text-red-700 px-4 py-2 rounded-lg text-sm font-medium">
@@ -952,21 +983,23 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                 <ShieldAlert size={15} />
                 Aguardando aprovação do gestor
               </span>
-            ) : canAdvance && isValueApprovalStep && !hasValueApproval && canProject ? (
+            ) : canAdvance && valueApprovalBlocksAdvance ? (
               <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
                 <ShieldAlert size={15} />
-                Aguardando aprovação de valor do gestor
+                {canProject
+                  ? 'Aguardando aprovação de valor do gestor'
+                  : 'Preencha valor e condição de pagamento antes de avançar'}
               </span>
-            ) : canAdvance && (!isApprovalStep || isApproved) && (!isValueApprovalStep || hasValueApproval || !canProject) && currentUser.role === 'comprador' ? (
+            ) : canAdvance && (!isApprovalStep || isApproved) && !valueApprovalBlocksAdvance && currentUser.role === 'comprador' ? (
               <div className="flex items-center gap-2">
-                {canSkipNext && (
+                {canSkipNext && skipTarget && (
                   <button
                     onClick={() => { if (isSubmitting) return; setIsSubmitting(true); onSkipStatus(request.id); }}
                     disabled={isSubmitting}
-                    title={`Pular etapa "${nextStatus}" — não aplicável a este pedido`}
+                    title={`Pular ${skipTarget.skipped.map((s) => `"${s}"`).join(' e ')} — não aplicável a este pedido`}
                     className="flex items-center gap-2 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed text-slate-600 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-slate-200"
                   >
-                    Pular "{nextStatus}"
+                    Pular {skipTarget.skipped.map((s) => `"${s}"`).join(' e ')}
                   </button>
                 )}
                 <button
