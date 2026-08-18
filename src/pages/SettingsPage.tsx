@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Building2, Palette, Users, ShieldCheck, GitBranch, ShoppingCart, Truck, Bell,
-  Plug, Lock, DatabaseBackup, SlidersHorizontal, ScrollText, KeyRound, Database,
+  Lock, DatabaseBackup, SlidersHorizontal, ScrollText, Database,
   Search, Star, ChevronRight, Plus, Trash2, X, AlertTriangle,
   Download, Upload, CheckCircle2, Clock, PiggyBank,
 } from 'lucide-react';
@@ -71,7 +71,6 @@ const CRITICAL_MODULES: { key: string; label: string }[] = [
   { key: 'seguranca', label: 'Segurança' },
   { key: 'backup', label: 'Backup' },
   { key: 'auditoria', label: 'Auditoria' },
-  { key: 'api', label: 'API' },
   { key: 'banco', label: 'Banco de Dados' },
   { key: 'compras', label: 'Compras' },
   { key: 'fornecedores', label: 'Fornecedores' },
@@ -132,8 +131,8 @@ function loadCachedSettings(): AppSettings {
 /* ================================================================== */
 type SectionKey =
   | 'geral' | 'identidade' | 'usuarios' | 'perfis' | 'aprovacao' | 'compras'
-  | 'fornecedores' | 'financeiro' | 'notificacoes' | 'integracoes' | 'seguranca' | 'backup'
-  | 'personalizacao' | 'auditoria' | 'api' | 'banco';
+  | 'fornecedores' | 'financeiro' | 'notificacoes' | 'seguranca' | 'backup'
+  | 'personalizacao' | 'auditoria' | 'banco';
 
 const SECTIONS: { key: SectionKey; label: string; icon: typeof Building2; critical?: boolean; keywords: string }[] = [
   { key: 'geral', label: 'Geral', icon: Building2, keywords: 'empresa cnpj razão social endereço telefone email' },
@@ -144,13 +143,11 @@ const SECTIONS: { key: SectionKey; label: string; icon: typeof Building2; critic
   { key: 'compras', label: 'Compras', icon: ShoppingCart, critical: true, keywords: 'numeração prefixo sla prioridade categoria centro de custo' },
   { key: 'fornecedores', label: 'Fornecedores', icon: Truck, critical: true, keywords: 'fornecedor avaliação score homologação bloqueio' },
   { key: 'financeiro', label: 'Financeiro', icon: PiggyBank, critical: true, keywords: 'financeiro parcela previsão vencimento feriado limbo comprometido caixa' },
-  { key: 'notificacoes', label: 'Notificações', icon: Bell, critical: true, keywords: 'notificação push email whatsapp ntfy alerta' },
-  { key: 'integracoes', label: 'Integrações', icon: Plug, keywords: 'erp api webhook smtp google microsoft slack teams power bi' },
+  { key: 'notificacoes', label: 'Notificações', icon: Bell, critical: true, keywords: 'notificação push ntfy alerta' },
   { key: 'seguranca', label: 'Segurança', icon: Lock, critical: true, keywords: 'mfa sessão ip sso login auditoria log' },
   { key: 'backup', label: 'Backup', icon: DatabaseBackup, critical: true, keywords: 'backup restauração download exportar importar' },
   { key: 'personalizacao', label: 'Personalização', icon: SlidersHorizontal, keywords: 'idioma fuso horário formato data moeda rodapé' },
   { key: 'auditoria', label: 'Auditoria', icon: ScrollText, critical: true, keywords: 'auditoria log alteração histórico quem alterou' },
-  { key: 'api', label: 'API', icon: KeyRound, critical: true, keywords: 'api chave token webhook documentação' },
   { key: 'banco', label: 'Banco de Dados', icon: Database, critical: true, keywords: 'banco dados espaço integridade registros' },
 ];
 
@@ -550,12 +547,10 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
                 {active === 'fornecedores' && <SuppliersSection settings={settings} patch={patch} />}
                 {active === 'financeiro' && <FinanceSection settings={settings} patch={patch} />}
                 {active === 'notificacoes' && <NotificationsSection settings={settings} patch={patch} />}
-                {active === 'integracoes' && <IntegrationsSection />}
                 {active === 'seguranca' && <SecuritySection settings={settings} patch={patch} users={users} />}
                 {active === 'backup' && <BackupSection settings={settings} setSettings={setSettings} showToast={showToast} />}
                 {active === 'personalizacao' && <CustomizationSection settings={settings} patch={patch} />}
                 {active === 'auditoria' && <AuditSection requests={requests} />}
-                {active === 'api' && <ApiSection settings={settings} setSettings={setSettings} showToast={showToast} />}
                 {active === 'banco' && <DatabaseSection requests={requests} users={users} settings={settings} />}
               </>
             )}
@@ -917,7 +912,7 @@ function ApprovalSection({ settings, patch }: { settings: AppSettings; patch: Pa
             <option value={2}>2 níveis — gestor → diretor</option>
             <option value={3}>3 níveis — gestor → diretor → financeiro</option>
           </select>
-          {a.niveis > 1 && <p className="text-xs text-amber-600 mt-1.5">Múltiplos níveis serão aplicados ao fluxo na integração com o backend — a configuração já fica salva.</p>}
+          {a.niveis > 1 && <p className="text-xs text-amber-600 mt-1.5">Múltiplos níveis ainda não são aplicados automaticamente ao fluxo — hoje apenas o gestor aprova. A configuração já fica salva.</p>}
         </div>
       </Card>
     </div>
@@ -950,9 +945,6 @@ function PurchasingSection({ settings, patch }: { settings: AppSettings; patch: 
           <TagEditor label="Centros de custo (setores)" tags={p.centrosCusto} onChange={(t) => patch('purchasing', { centrosCusto: t })} />
           <TagEditor label="Tipos de solicitação" tags={p.tiposSolicitacao} onChange={(t) => patch('purchasing', { tiposSolicitacao: t })} />
         </div>
-      </Card>
-      <Card title="Status Personalizados">
-        <PendingBanner text="As 9 colunas atuais do Kanban são fixas para garantir a consistência do fluxo. Status personalizados serão liberados junto com o backend, usando esta configuração." />
       </Card>
     </div>
   );
@@ -1077,7 +1069,7 @@ function NotificationsSection({ settings, patch }: { settings: AppSettings; patc
   const n = settings.notifications;
   return (
     <div className="space-y-4">
-      <Card title="Canais" subtitle="O push via ntfy está ativo hoje; e-mail e WhatsApp dependem do backend">
+      <Card title="Canais" subtitle="Notificações push via ntfy">
         <Toggle label="Push (ntfy)" hint="Notificações no celular via aplicativo ntfy" checked={n.pushEnabled} onChange={(v) => patch('notifications', { pushEnabled: v })} />
         {n.pushEnabled && (
           <div className="py-3">
@@ -1085,8 +1077,6 @@ function NotificationsSection({ settings, patch }: { settings: AppSettings; patc
             <p className="text-[11px] text-slate-400 mt-1">Assine este tópico no app ntfy (Android/iOS) para receber os alertas.</p>
           </div>
         )}
-        <Toggle label="E-mail" hint="Requer configuração SMTP no backend" checked={n.emailEnabled} onChange={(v) => patch('notifications', { emailEnabled: v })} />
-        <Toggle label="WhatsApp" hint="Requer integração com API oficial no backend" checked={n.whatsappEnabled} onChange={(v) => patch('notifications', { whatsappEnabled: v })} />
       </Card>
       <Card title="Eventos Notificados">
         <Toggle label="Novas solicitações" checked={n.evNovas} onChange={(v) => patch('notifications', { evNovas: v })} />
@@ -1099,50 +1089,12 @@ function NotificationsSection({ settings, patch }: { settings: AppSettings; patc
   );
 }
 
-function IntegrationsSection() {
-  const integrations = [
-    { name: 'ERP', desc: 'Sincronize solicitações e pedidos com seu ERP' },
-    { name: 'API REST', desc: 'Integração via API própria do sistema' },
-    { name: 'Webhook', desc: 'Dispare eventos para sistemas externos' },
-    { name: 'SMTP', desc: 'Servidor de e-mail para notificações' },
-    { name: 'Microsoft 365', desc: 'Login e calendário Microsoft' },
-    { name: 'Google Workspace', desc: 'Login e agenda Google' },
-    { name: 'Slack', desc: 'Alertas em canais do Slack' },
-    { name: 'Microsoft Teams', desc: 'Alertas em canais do Teams' },
-    { name: 'Power BI', desc: 'Conecte os dados aos seus dashboards' },
-  ];
-  return (
-    <div className="space-y-4">
-      <PendingBanner text="As integrações dependem do backend e serão habilitadas na próxima fase. Esta área já está pronta para recebê-las." />
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-        {integrations.map((i) => (
-          <div key={i.name} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md transition-shadow">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                <Plug size={15} className="text-slate-400" />
-              </div>
-              <h4 className="text-sm font-semibold text-slate-700">{i.name}</h4>
-            </div>
-            <p className="text-xs text-slate-400 mb-3">{i.desc}</p>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-medium text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Não conectado</span>
-              <button disabled className="text-xs text-slate-300 border border-slate-200 px-2.5 py-1 rounded-lg cursor-not-allowed" title="Disponível após integração com o backend">
-                Conectar
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function SecuritySection({ settings, patch, users }: { settings: AppSettings; patch: PatchFn; users: AppUser[] }) {
   const s = settings.security;
   const logins = users.filter((u) => u.lastLogin).sort((a, b) => (b.lastLogin! > a.lastLogin! ? 1 : -1));
   return (
     <div className="space-y-4">
-      <Card title="Políticas de Acesso" subtitle="As políticas ficam salvas e passam a valer com a autenticação do backend">
+      <Card title="Políticas de Acesso" subtitle="MFA, SSO e a lista de IPs ainda não são aplicados no login — hoje a autenticação é feita pelo Supabase Auth (e-mail/senha). As preferências já ficam salvas.">
         <Toggle label="Autenticação em dois fatores (MFA)" hint="Exigir segundo fator no login" checked={s.mfa} onChange={(v) => patch('security', { mfa: v })} />
         <Toggle label="Login único (SSO)" hint="Autenticação via provedor corporativo" checked={s.sso} onChange={(v) => patch('security', { sso: v })} />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-3">
@@ -1188,7 +1140,7 @@ function SecuritySection({ settings, patch, users }: { settings: AppSettings; pa
             ))}
           </div>
         )}
-        <p className="text-[11px] text-slate-400 mt-3">IP e dispositivo por acesso serão registrados pelo backend.</p>
+        <p className="text-[11px] text-slate-400 mt-3">IP e dispositivo por acesso não são registrados hoje.</p>
       </Card>
     </div>
   );
@@ -1268,7 +1220,7 @@ function BackupSection({ settings, setSettings, showToast }: {
         </div>
       </Card>
       <Card title="Backup Automático">
-        <Toggle label="Backup automático agendado" hint="Agendamento no servidor — configurado aqui e executado pelo backend"
+        <Toggle label="Backup automático agendado" hint="Agendamento automático ainda não está implementado — hoje o backup é manual, pelo botão acima"
           checked={settings.autoBackup} onChange={(v) => setSettings((st) => ({ ...st, autoBackup: v }))} />
       </Card>
       <Card title="Histórico de Backups">
@@ -1360,7 +1312,7 @@ function CustomizationSection({ settings, patch }: { settings: AppSettings; patc
           </select>
         </div>
       </div>
-      <p className="text-[11px] text-slate-400 mt-3">Idioma, fuso e formatos são aplicados globalmente na integração com o backend; as preferências já ficam salvas.</p>
+      <p className="text-[11px] text-slate-400 mt-3">Idioma, fuso e formatos ainda não são aplicados globalmente na interface; as preferências já ficam salvas.</p>
     </Card>
   );
 }
@@ -1409,7 +1361,7 @@ function AuditSection({ requests }: { requests: PurchaseRequest[] }) {
                     </td>
                     <td className="px-3 py-2.5 text-xs font-semibold text-violet-600 whitespace-nowrap">{e.number}</td>
                     <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">{new Date(e.date).toLocaleString('pt-BR')}</td>
-                    <td className="px-3 py-2.5 text-xs text-slate-300">registrado pelo backend</td>
+                    <td className="px-3 py-2.5 text-xs text-slate-300">não registrado</td>
                   </tr>
                 ))}
               </tbody>
@@ -1428,61 +1380,6 @@ function AuditSection({ requests }: { requests: PurchaseRequest[] }) {
         </>
       )}
     </Card>
-  );
-}
-
-function ApiSection({ settings, setSettings, showToast }: {
-  settings: AppSettings; setSettings: React.Dispatch<React.SetStateAction<AppSettings>>; showToast: (m: string) => void;
-}) {
-  const [label, setLabel] = useState('');
-  const genKey = () => {
-    if (!label.trim()) return;
-    const rand = Array.from(crypto.getRandomValues(new Uint8Array(24))).map((b) => b.toString(16).padStart(2, '0')).join('');
-    setSettings((s) => ({
-      ...s,
-      apiKeys: [...s.apiKeys, { id: `k-${Date.now()}`, label: label.trim(), key: `cl_${rand}`, createdAt: new Date().toISOString() }],
-    }));
-    setLabel('');
-    showToast('Chave de API gerada');
-  };
-  return (
-    <div className="space-y-4">
-      <PendingBanner text="A API REST será exposta pelo backend. As chaves geradas aqui já ficam registradas e serão validadas pelo servidor na integração." />
-      <Card title="Chaves de API">
-        <div className="flex gap-2 mb-4">
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Nome da chave (ex.: Integração ERP)"
-            onKeyDown={(e) => { if (e.key === 'Enter') genKey(); }} aria-label="Nome da chave"
-            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500" />
-          <button onClick={genKey} disabled={!label.trim()}
-            className="flex items-center gap-1.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 text-white px-3 py-2 rounded-lg text-xs font-medium">
-            <KeyRound size={13} /> Gerar chave
-          </button>
-        </div>
-        {settings.apiKeys.length === 0 ? (
-          <p className="text-xs text-slate-400 text-center py-6">Nenhuma chave criada.</p>
-        ) : (
-          <div className="space-y-2">
-            {settings.apiKeys.map((k) => (
-              <div key={k.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
-                <KeyRound size={13} className="text-violet-500 flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-700">{k.label}</p>
-                  <p className="text-xs text-slate-400 font-mono truncate">{k.key}</p>
-                </div>
-                <span className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(k.createdAt).toLocaleDateString('pt-BR')}</span>
-                <button onClick={() => setSettings((s) => ({ ...s, apiKeys: s.apiKeys.filter((x) => x.id !== k.id) }))}
-                  aria-label={`Revogar ${k.label}`} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
-      <Card title="Webhooks, Documentação e Limites">
-        <PendingBanner text="Webhooks, documentação da API, limites de uso e status ficarão disponíveis quando o backend for publicado." />
-      </Card>
-    </div>
   );
 }
 

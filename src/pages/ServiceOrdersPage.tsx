@@ -3,9 +3,9 @@ import {
   ClipboardList, FolderOpen, Loader2, ShieldAlert, Wrench, CheckCircle2, XCircle,
   AlarmClock, DollarSign, Plus, Search, X, ChevronLeft, ChevronRight, ChevronUp,
   ChevronDown, Columns3, Download, FileSpreadsheet, Printer, ArrowRight,
-  MessageSquare, Clock, Paperclip, Trash2, ShoppingCart, HardHat, Info, FilterX,
+  MessageSquare, Clock, Trash2, ShoppingCart, HardHat, Info, FilterX,
   Eye, Kanban, List, Calendar, RefreshCw, Copy, Pause, Play, ListChecks,
-  PenLine, Camera, Pencil,
+  Pencil,
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { KanbanColumnShell } from '../components/Kanban/KanbanColumnShell';
@@ -1230,11 +1230,6 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                       </div>
                     ))}
                   </dl>
-                  <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-[11px] text-slate-400">
-                    <p className="flex items-center gap-1.5"><Paperclip size={11} /> Anexos e laudos — em breve</p>
-                    <p className="flex items-center gap-1.5"><Camera size={11} /> Registro fotográfico antes/depois — em breve</p>
-                    <p className="flex items-center gap-1.5"><PenLine size={11} /> Assinatura digital — em breve</p>
-                  </div>
                 </div>
               </div>
 
@@ -1382,7 +1377,6 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                   </div>
                 )}
                 {labError && <p className="text-[11px] text-red-500 mt-1.5">{labError}</p>}
-                <p className="text-[11px] text-slate-400 mt-2">Registro de deslocamento — em breve.</p>
                 <div className="mt-3 pt-3 border-t border-slate-100 flex justify-between text-sm">
                   <span className="font-semibold text-slate-600">Custo total da O.S. (atualizado automaticamente)</span>
                   <span className="font-bold text-violet-700">{fmtBRL(cost)}</span>
