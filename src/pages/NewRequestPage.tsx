@@ -7,11 +7,13 @@ import { generateRequestNumber } from '../utils/numbering';
 import { sendNotification } from '../utils/notify';
 import { AppUser } from '../data/users';
 import { ObjectLinkInput, normalizeUrl } from '../components/UI/ObjectLink';
+import { UNITS, DEFAULT_UNIT } from '../data/units';
 
 interface ItemForm {
   id: string;
   description: string;
   quantity: number;
+  unit: string;
   application: string;
   priority: Priority;
   deliveryForecast: string;
@@ -31,7 +33,7 @@ const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI',
 const applications = ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'];
 
 function newItem(): ItemForm {
-  return { id: crypto.randomUUID(), description: '', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '', link: '' };
+  return { id: crypto.randomUUID(), description: '', quantity: 1, unit: DEFAULT_UNIT, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '', link: '' };
 }
 
 function getInitials(name: string): string {
@@ -99,6 +101,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
         id: `item-${Date.now()}-${idx}`,
         description: item.description,
         quantity: item.quantity,
+        unit: item.unit || DEFAULT_UNIT,
         application: item.application,
         priority: item.priority,
         deliveryForecast: item.deliveryForecast || now.slice(0, 10),
@@ -224,9 +227,16 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Quantidade <span className="text-red-500">*</span></label>
-                      <input type="number" min={1} required value={item.quantity}
-                        onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                      <div className="flex gap-1.5">
+                        <input type="number" min={1} required value={item.quantity}
+                          onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
+                          className="w-full min-w-0 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white" />
+                        <select value={item.unit} onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
+                          title="Unidade de medida"
+                          className="w-20 flex-shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700">
+                          {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                        </select>
+                      </div>
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-slate-600 mb-1">Aplicação</label>

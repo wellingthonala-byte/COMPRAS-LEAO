@@ -13,6 +13,7 @@ import { colorFromInitials } from '../../utils/colors';
 import { PriorityBadge, StatusBadge } from '../UI/Badge';
 import { Avatar } from '../UI/Avatar';
 import { STATUS_ORDER, computeSkipTarget } from '../../data/mockData';
+import { UNITS, DEFAULT_UNIT } from '../../data/units';
 
 interface RequestDetailModalProps {
   request: PurchaseRequest;
@@ -144,6 +145,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
     setItemDraft({
       description: item.description,
       quantity: item.quantity,
+      unit: item.unit || DEFAULT_UNIT,
       application: item.application,
       technicalSpec: item.technicalSpec || '',
       observations: item.observations || '',
@@ -172,6 +174,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
     if (original) {
       if (original.description !== String(itemDraft.description)) changes.push(`descrição: "${original.description}" → "${itemDraft.description}"`);
       if (original.quantity !== Number(itemDraft.quantity)) changes.push(`quantidade: ${original.quantity} → ${itemDraft.quantity}`);
+      if ((original.unit || DEFAULT_UNIT) !== String(itemDraft.unit)) changes.push(`unidade: ${original.unit || DEFAULT_UNIT} → ${itemDraft.unit}`);
       if (original.application !== String(itemDraft.application)) changes.push(`aplicação: "${original.application || '—'}" → "${itemDraft.application || '—'}"`);
       if ((original.technicalSpec || '') !== String(itemDraft.technicalSpec)) changes.push('especificação técnica alterada');
       if ((original.observations || '') !== String(itemDraft.observations)) changes.push('observações alteradas');
@@ -183,6 +186,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
         ...item,
         description: String(itemDraft.description),
         quantity: Number(itemDraft.quantity),
+        unit: String(itemDraft.unit) || DEFAULT_UNIT,
         application: String(itemDraft.application),
         technicalSpec: String(itemDraft.technicalSpec) || undefined,
         observations: String(itemDraft.observations) || undefined,
@@ -592,9 +596,16 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="block text-xs text-slate-500 mb-1">Quantidade</label>
-                            <input type="number" min={1} value={Number(itemDraft.quantity)}
-                              onChange={(e) => setItemDraft((d) => ({ ...d, quantity: Number(e.target.value) }))}
-                              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+                            <div className="flex gap-1.5">
+                              <input type="number" min={1} value={Number(itemDraft.quantity)}
+                                onChange={(e) => setItemDraft((d) => ({ ...d, quantity: Number(e.target.value) }))}
+                                className="w-full min-w-0 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white" />
+                              <select value={String(itemDraft.unit ?? DEFAULT_UNIT)} onChange={(e) => setItemDraft((d) => ({ ...d, unit: e.target.value }))}
+                                title="Unidade de medida"
+                                className="w-20 flex-shrink-0 border border-slate-200 rounded-lg px-1.5 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 bg-white text-slate-700">
+                                {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+                              </select>
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs text-slate-500 mb-1">Aplicação</label>
@@ -653,7 +664,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                         </div>
                         <div className="text-right flex-shrink-0">
                           <p className="text-xs text-slate-400">Qtd.</p>
-                          <p className="text-lg font-bold text-slate-800">{item.quantity}</p>
+                          <p className="text-lg font-bold text-slate-800">{item.quantity} <span className="text-xs font-medium text-slate-400">{item.unit || DEFAULT_UNIT}</span></p>
                         </div>
                       </div>
                     )}

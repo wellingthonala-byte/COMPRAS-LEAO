@@ -8,6 +8,8 @@ export interface Item {
   id: string;
   description: string;
   quantity: number;
+  /** Unidade de medida (UN, CX, KG, L, ML etc.) — opcional para não quebrar itens antigos. */
+  unit?: string;
   application: string;
   priority: Priority;
   deliveryForecast: string;
