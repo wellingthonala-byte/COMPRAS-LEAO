@@ -17,6 +17,7 @@ interface ItemForm {
   deliveryForecast: string;
   technicalSpec: string;
   observations: string;
+  link: string;
 }
 
 interface NewRequestPageProps {
@@ -30,7 +31,7 @@ const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI',
 const applications = ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'];
 
 function newItem(): ItemForm {
-  return { id: crypto.randomUUID(), description: '', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '' };
+  return { id: crypto.randomUUID(), description: '', quantity: 1, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '', link: '' };
 }
 
 function getInitials(name: string): string {
@@ -74,6 +75,12 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
       return;
     }
 
+    const invalidItemLinkIdx = items.findIndex((item) => item.link.trim() !== '' && !normalizeUrl(item.link));
+    if (invalidItemLinkIdx !== -1) {
+      setFormError(`O link do Item ${invalidItemLinkIdx + 1} não é uma URL válida — corrija ou deixe em branco.`);
+      return;
+    }
+
     setSubmitting(true);
     const now = new Date().toISOString();
     const initials = getInitials(requester);
@@ -97,6 +104,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
         deliveryForecast: item.deliveryForecast || now.slice(0, 10),
         technicalSpec: item.technicalSpec || undefined,
         observations: item.observations || undefined,
+        link: normalizeUrl(item.link) ?? undefined,
       })),
       observations: observations || undefined,
       objectLink: normalizedLink ?? undefined,
@@ -234,6 +242,9 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700">
                         {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
                       </select>
+                    </div>
+                    <div className="col-span-3">
+                      <ObjectLinkInput value={item.link} onChange={(v) => updateItem(item.id, 'link', v)} label="Link do Item (opcional)" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-xs font-medium text-slate-600 mb-1">Especificação Técnica</label>

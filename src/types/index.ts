@@ -14,6 +14,8 @@ export interface Item {
   technicalSpec?: string;
   observations?: string;
   objections?: Objection[];
+  /** Link do produto/serviço específico deste item (fornecedor, referência etc.). */
+  link?: string;
 }
 
 export interface PurchaseRequest {

@@ -1,6 +1,6 @@
 import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw, Printer, PiggyBank } from 'lucide-react';
 import { printPurchaseRequest } from '../../utils/printDocument';
-import { ObjectLinkView } from '../UI/ObjectLink';
+import { ObjectLinkView, ObjectLinkInput, normalizeUrl } from '../UI/ObjectLink';
 import { useMemo, useState } from 'react';
 import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
@@ -147,6 +147,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
       application: item.application,
       technicalSpec: item.technicalSpec || '',
       observations: item.observations || '',
+      link: item.link || '',
     });
   };
 
@@ -154,8 +155,15 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
     const descriptionValid = !!String(itemDraft.description ?? '').trim();
     const quantityNum = Number(itemDraft.quantity);
     const quantityValid = Number.isFinite(quantityNum) && quantityNum > 0;
-    if (!descriptionValid || !quantityValid) {
-      setItemEditError(!descriptionValid ? 'Descrição é obrigatória.' : 'Quantidade deve ser maior que zero.');
+    const linkRaw = String(itemDraft.link ?? '');
+    const normalizedLink = normalizeUrl(linkRaw);
+    const linkValid = linkRaw.trim() === '' || !!normalizedLink;
+    if (!descriptionValid || !quantityValid || !linkValid) {
+      setItemEditError(
+        !descriptionValid ? 'Descrição é obrigatória.'
+          : !quantityValid ? 'Quantidade deve ser maior que zero.'
+          : 'Link inválido — corrija ou deixe em branco.'
+      );
       return;
     }
     setItemEditError('');
@@ -167,6 +175,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
       if (original.application !== String(itemDraft.application)) changes.push(`aplicação: "${original.application || '—'}" → "${itemDraft.application || '—'}"`);
       if ((original.technicalSpec || '') !== String(itemDraft.technicalSpec)) changes.push('especificação técnica alterada');
       if ((original.observations || '') !== String(itemDraft.observations)) changes.push('observações alteradas');
+      if ((original.link || '') !== (normalizedLink ?? '')) changes.push('link do item alterado');
     }
     const updatedItems = request.items.map((item) => {
       if (item.id !== itemId) return item;
@@ -177,6 +186,7 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
         application: String(itemDraft.application),
         technicalSpec: String(itemDraft.technicalSpec) || undefined,
         observations: String(itemDraft.observations) || undefined,
+        link: normalizedLink ?? undefined,
       };
     });
     onEdit(request.id, {
@@ -594,6 +604,9 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                           </div>
                         </div>
                         <div>
+                          <ObjectLinkInput value={String(itemDraft.link ?? '')} onChange={(v) => setItemDraft((d) => ({ ...d, link: v }))} label="Link do Item" />
+                        </div>
+                        <div>
                           <label className="block text-xs text-slate-500 mb-1">Especificação Técnica</label>
                           <textarea value={String(itemDraft.technicalSpec)} rows={2} spellCheck={true} lang="pt-BR"
                             onChange={(e) => setItemDraft((d) => ({ ...d, technicalSpec: e.target.value }))}
@@ -631,6 +644,11 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                             <span>Previsão: <strong className="text-slate-700">{formatDate(item.deliveryForecast)}</strong></span>
                             {item.technicalSpec && <span className="col-span-2 break-all">Especificação: <strong className="text-slate-700">{item.technicalSpec}</strong></span>}
                             {item.observations && <span className="col-span-2 break-all">Obs: <em className="text-slate-600">{item.observations}</em></span>}
+                            {item.link && (
+                              <span className="col-span-2 flex items-center gap-1">
+                                Link: <ObjectLinkView url={item.link} />
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
