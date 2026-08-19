@@ -1,8 +1,7 @@
-import { Plus, Bell, Search, X, ShieldCheck, Clock, ArrowRight, Send } from 'lucide-react';
+import { Plus, Bell, Search, X, ShieldCheck, Clock, ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PurchaseRequest } from '../../types';
-import { sendTestNotification, getNtfyTopic } from '../../utils/notify';
 
 interface HeaderProps {
   title: string;
@@ -22,18 +21,6 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
-  const [testStatus, setTestStatus] = useState<string | null>(null);
-
-  const handleTestNotification = async () => {
-    setTestStatus('enviando...');
-    const result = await sendTestNotification();
-    if (result.ok) {
-      setTestStatus('✓ enviado! (verifique no dispositivo)');
-    } else {
-      setTestStatus(`✗ erro: ${result.error ?? 'rede'}`);
-    }
-    setTimeout(() => setTestStatus(null), 5000);
-  };
 
   const notifications = requests
     .flatMap((r) =>
@@ -144,15 +131,6 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          onClick={handleTestNotification}
-          title={`Testar notificação ntfy (tópico: ${getNtfyTopic()})`}
-          disabled={testStatus === 'enviando...'}
-          className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-violet-700 border border-slate-200 hover:border-violet-300 px-3 py-2 rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          <Send size={13} />
-          {testStatus ?? 'Testar ntfy'}
-        </button>
         <button
           onClick={onPrimaryAction ?? (() => navigate('/nova-solicitacao'))}
           className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
