@@ -112,7 +112,7 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
 
   const todayISO = new Date().toISOString();
   const months = useMemo(
-    () => monthlyProjection(rows, monthKeyOf(todayISO), MONTHS_AHEAD),
+    () => monthlyProjection(rows, monthKeyOf(todayISO), MONTHS_AHEAD, todayISO),
     [rows, todayISO]
   );
   const summary = useMemo(() => commitmentSummary(rows, todayISO, MONTHS_AHEAD), [rows, todayISO]);

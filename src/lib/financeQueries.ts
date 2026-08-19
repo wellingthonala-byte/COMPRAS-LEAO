@@ -154,16 +154,32 @@ export interface MonthProjection {
  * Parcelas canceladas nunca entram no total — continuam no banco só para
  * auditoria. Meses sem parcela aparecem com zero, para o gráfico não
  * "pular" períodos.
+ *
+ * Quando `todayISO` é informado, o bucket do MÊS CORRENTE exclui parcelas já
+ * vencidas (dueDate < hoje) em Previsto/Confirmado — essas são contabilizadas
+ * só em `overdueInstallments`, nunca aqui, para não duplicar o valor entre as
+ * duas caixas de KPI. Meses futuros continuam somando normalmente, pois não
+ * faz sentido falar em "vencida" para uma data que ainda não chegou.
  */
-export function monthlyProjection(rows: InstallmentRow[], fromMonthKey: string, months: number): MonthProjection[] {
+export function monthlyProjection(
+  rows: InstallmentRow[],
+  fromMonthKey: string,
+  months: number,
+  todayISO?: string
+): MonthProjection[] {
   const buckets = new Map<string, InstallmentRow[]>();
   for (let n = 0; n < months; n++) buckets.set(addMonths(fromMonthKey, n), []);
+
+  const currentMonthKey = todayISO ? monthKeyOf(localDayOf(todayISO)) : undefined;
+  const today = todayISO ? localDayOf(todayISO) : undefined;
 
   for (const row of rows) {
     if (row.installment.status === 'Cancelado') continue;
     const key = monthKeyOf(row.installment.dueDate);
     const bucket = buckets.get(key);
-    if (bucket) bucket.push(row);
+    if (!bucket) continue;
+    if (key === currentMonthKey && today && row.installment.dueDate < today) continue;
+    bucket.push(row);
   }
 
   return [...buckets.entries()].map(([monthKey, items]) => {
@@ -226,7 +242,7 @@ export interface CommitmentSummary {
 
 /** Comprometido do mês corrente e dos N meses seguintes. */
 export function commitmentSummary(rows: InstallmentRow[], todayISO: string, months: number): CommitmentSummary {
-  const projection = monthlyProjection(rows, monthKeyOf(todayISO), months);
+  const projection = monthlyProjection(rows, monthKeyOf(todayISO), months, todayISO);
   return {
     months: projection,
     total: sumAmounts(projection.map((m) => m.total)),
@@ -242,12 +258,15 @@ export function commitmentSummary(rows: InstallmentRow[], todayISO: string, mont
 /**
  * Parcelas com vencimento no passado que ainda não foram baixadas.
  *
- * `monthlyProjection` só enxerga do mês corrente em diante — uma parcela
- * vencida em Previsto/Confirmado simplesmente não entra em nenhum bucket e
- * some de todos os totais ("Comprometido", "Previsto", "Confirmado", o
- * gráfico de 12 meses). Como não existe UI para dar baixa em 'Pago', essa
- * é a única forma de o gestor enxergar o dinheiro comprometido que já
- * venceu e continua em aberto.
+ * Quando o vencimento cai num mês ANTERIOR ao corrente, `monthlyProjection`
+ * nem cria bucket pra trás — a parcela simplesmente some de todos os totais
+ * ("Comprometido", "Previsto", "Confirmado", o gráfico de N meses). Quando o
+ * vencimento cai DENTRO do mês corrente, `monthlyProjection` (chamada com
+ * `todayISO`) exclui a parcela do bucket do mês corrente propositalmente,
+ * para que ela apareça só aqui — nunca nas duas caixas ao mesmo tempo. Como
+ * não existe UI para dar baixa em 'Pago', esta função é a única forma de o
+ * gestor enxergar o dinheiro comprometido que já venceu e continua em
+ * aberto.
  */
 export function overdueInstallments(rows: InstallmentRow[], todayISO: string): InstallmentRow[] {
   const today = localDayOf(todayISO);

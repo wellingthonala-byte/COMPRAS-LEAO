@@ -4,8 +4,8 @@ import { Installment, PaymentTerms } from '../types/finance';
 import { buildHolidaySet, computeInstallments } from './finance';
 import {
   addMonths, applyFilters, buyerOf, commitmentSummary, EMPTY_FILTERS, exportRows, filterOptions,
-  groupByRequest, hasActiveFilters, joinInstallments, limboRequests, monthLabel, monthlyProjection,
-  rowsOfMonth,
+  groupByRequest, hasActiveFilters, InstallmentRow, joinInstallments, limboRequests, monthLabel,
+  monthlyProjection, overdueInstallments, rowsOfMonth,
 } from './financeQueries';
 
 const HOLIDAYS = buildHolidaySet(2026, 2028);
@@ -147,6 +147,39 @@ describe('projeção mensal', () => {
     const months = monthlyProjection(rows, '2026-08', 2);
     expect(months.map((m) => m.total)).toEqual([0, 3000]);
   });
+
+  function makeOverdueRow(): InstallmentRow {
+    const overdueReq = makeRequest('9');
+    const [base] = makeInstallments(overdueReq);
+    const installment: Installment = { ...base, dueDate: '2026-08-05', amount: 9000, status: 'Previsto' };
+    return { installment, request: overdueReq, buyer: undefined };
+  }
+
+  it('com todayISO, exclui do bucket do mês corrente a parcela já vencida (evita dupla contagem com overdueInstallments)', () => {
+    // hoje = 2026-08-19; parcela vence 2026-08-05, dentro do mês corrente mas
+    // já vencida — antes da correção ela era somada aqui E em
+    // overdueInstallments ao mesmo tempo.
+    const overdueRows = [makeOverdueRow()];
+    const today = '2026-08-19T12:00:00.000Z';
+
+    const months = monthlyProjection(overdueRows, '2026-08', 1, today);
+    expect(months[0]).toMatchObject({ previsto: 0, total: 0, count: 0 });
+
+    const overdue = overdueInstallments(overdueRows, today);
+    expect(overdue).toHaveLength(1);
+    expect(overdue[0].installment.amount).toBe(9000);
+  });
+
+  it('sem todayISO, mantém o comportamento anterior (compat) — não exclui vencidas do bucket', () => {
+    const overdueRows = [makeOverdueRow()];
+    const months = monthlyProjection(overdueRows, '2026-08', 1);
+    expect(months[0]).toMatchObject({ previsto: 9000, total: 9000, count: 1 });
+  });
+
+  it('mês futuro continua somando normalmente mesmo com todayISO informado', () => {
+    const months = monthlyProjection(rows, '2026-08', 4, '2026-08-19T12:00:00.000Z');
+    expect(months.map((m) => m.total)).toEqual([0, 3000, 3000, 3000]);
+  });
 });
 
 describe('drill-down do mês', () => {
@@ -232,6 +265,23 @@ describe('resumo para o Dashboard', () => {
     expect(summary.total).toBe(6000);
     expect(summary.previsto).toBe(6000);
     expect(summary.confirmado).toBe(0);
+  });
+
+  it('não duplica com overdueInstallments uma parcela vencida dentro do mês corrente', () => {
+    // Regressão do bug: parcela de R$1000, Previsto, vencida em 2026-08-05
+    // (hoje é 2026-08-19) — não pode contar em "Previsto" do mês corrente E
+    // em "Vencido e em aberto" ao mesmo tempo.
+    const req = makeRequest('9');
+    const [base] = makeInstallments(req);
+    const installment: Installment = { ...base, dueDate: '2026-08-05', amount: 1000, status: 'Previsto' };
+    const rows = [{ installment, request: req, buyer: undefined }];
+
+    const summary = commitmentSummary(rows, NOW, 3);
+    const overdue = overdueInstallments(rows, NOW);
+
+    expect(summary.previsto).toBe(0);
+    expect(overdue).toHaveLength(1);
+    expect(overdue[0].installment.amount).toBe(1000);
   });
 });
 

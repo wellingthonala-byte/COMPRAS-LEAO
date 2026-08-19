@@ -1,6 +1,7 @@
 import { PurchaseRequest } from '../types';
 import { ServiceOrder, osCost, osElapsedHours } from '../types/serviceOrders';
 import { formatPaymentTerms, isPaymentTermsValid } from '../lib/paymentTerms';
+import { DEFAULT_UNIT } from '../data/units';
 
 /* ================================================================== */
 /* Módulo reutilizável de impressão — documento corporativo A4         */
@@ -355,7 +356,7 @@ export function printPurchaseRequest(r: PurchaseRequest, generatedBy: string): v
       description: it.description,
       detail: [it.technicalSpec, it.observations].filter(Boolean).join(' · ') || undefined,
       quantity: it.quantity,
-      unit: 'UND',
+      unit: it.unit || DEFAULT_UNIT,
       unitValue: hasValue ? (r.value! / totalQty) : undefined,
       discount: 0,
       total: hasValue ? (r.value! / totalQty) * it.quantity : undefined,

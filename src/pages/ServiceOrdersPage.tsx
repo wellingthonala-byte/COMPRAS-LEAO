@@ -18,6 +18,7 @@ import { syncServiceOrders, flushServiceOrderQueue, pendingServiceOrderSyncCount
 import { ObjectLinkInput, ObjectLinkView, normalizeUrl } from '../components/UI/ObjectLink';
 import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
+import { normalizeOsUnit } from '../data/units';
 import {
   ServiceOrder, OSStatus, OSPriority, MaintenanceType, OS_FLOW, OS_COLUMNS,
   loadServiceOrders, saveServiceOrders, osCost, osIsOverdue,
@@ -382,6 +383,8 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
       createdAt: now, deliveryForecast: os.dueDate || now.slice(0, 10),
       items: (os.materials.length > 0 ? os.materials : [{ id: 'm0', product: `Peças para ${os.title}`, code: '', quantity: 1, unit: 'un', unitValue: 0 }]).map((m, i) => ({
         id: `item-${Date.now()}-${i}`, description: m.product, quantity: m.quantity,
+        // unit da O.S. usa abreviações próprias ('un', 'pç', 'kg' ...); normaliza para a lista UNITS do módulo de Compras.
+        unit: normalizeOsUnit(m.unit),
         application: 'Manutenção Geral', priority: prio, deliveryForecast: os.dueDate || now.slice(0, 10),
         observations: `Gerado pela ${os.number} — ${os.equipment.name}`,
       })),

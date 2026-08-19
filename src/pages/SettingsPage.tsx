@@ -11,6 +11,7 @@ import { PurchaseRequest } from '../types';
 import { AppUser, Role, loadUsers } from '../data/users';
 import { PAYMENT_TERMS_PRESETS } from '../lib/paymentTerms';
 import { nationalHolidays } from '../lib/finance';
+import { countsAsPurchase } from '../lib/financeSync';
 import {
   fetchAppSettings, saveAppSettings, fetchRolePermissions, saveRolePermission,
   buildPermissionMap, isModuleAllowed, dbRolesFor, fetchRealUsers, RealUser, uploadLogo,
@@ -1474,8 +1475,8 @@ function MigrationTool() {
 }
 
 function DatabaseSection({ requests, users, settings }: { requests: PurchaseRequest[]; users: AppUser[]; settings: AppSettings }) {
-  const purchases = requests.filter((r) => r.supplier || r.value);
-  const totalValue = requests.reduce((s, r) => s + (r.value ?? 0), 0);
+  const purchases = requests.filter((r) => countsAsPurchase(r) && (r.supplier || r.value));
+  const totalValue = requests.filter(countsAsPurchase).reduce((s, r) => s + (r.value ?? 0), 0);
   let bytes = 0;
   let integrity = true;
   for (let i = 0; i < localStorage.length; i++) {

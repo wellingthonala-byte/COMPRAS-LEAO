@@ -10,6 +10,7 @@ import { colorFromInitials } from '../utils/colors';
 import { exportCSV, exportExcel } from '../utils/export';
 import { PurchaseRequest, Status, Priority } from '../types';
 import { countsAsPurchase } from '../lib/financeSync';
+import { localDayOf } from '../lib/finance';
 
 /* ------------------------------------------------------------------ */
 /* Paleta categórica validada (ordem fixa, CVD-safe)                    */
@@ -98,9 +99,12 @@ function previousPeriodRange(key: PeriodKey, range: { start: Date; end: Date }):
 /* Métricas derivadas dos dados reais                                  */
 /* ------------------------------------------------------------------ */
 function isApproved(r: PurchaseRequest): boolean {
+  // Cancelado nunca conta como aprovado — mesmo que tenha tido aprovação de
+  // mérito antes do cancelamento (approvedBy/histórico de aprovação não são
+  // apagados quando o pedido é cancelado, ver KanbanPage.tsx handleCancel).
+  if (r.status === 'Cancelada') return false;
   if (r.approvedBy) return true;
   if (r.history.some((h) => h.action.toLowerCase().includes('aprovad'))) return true;
-  if (r.status === 'Cancelada') return false;
   return STATUS_ORDER.indexOf(r.status) > 1;
 }
 function hasOpenObjection(r: PurchaseRequest): boolean {
@@ -128,7 +132,7 @@ function computeKpis(rs: PurchaseRequest[]) {
   const totalValue = rs.filter(countsAsPurchase).reduce((s, r) => s + (r.value ?? 0), 0);
   const times = rs.map(approvalHours).filter((t): t is number => t !== null);
   const avgApproval = times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
-  const suppliers = new Set(rs.map((r) => r.supplier).filter(Boolean)).size;
+  const suppliers = new Set(rs.filter(countsAsPurchase).map((r) => r.supplier).filter(Boolean)).size;
   return { total: rs.length, pending, approved, rejected, totalValue, avgApproval, suppliers };
 }
 function fmtHours(h: number | null): string {
@@ -681,7 +685,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
   const evolution = useMemo(() => {
     const byDay = new Map<string, number>();
     filtered.forEach((r) => {
-      const k = r.createdAt.slice(0, 10);
+      const k = localDayOf(r.createdAt);
       byDay.set(k, (byDay.get(k) ?? 0) + 1);
     });
     return [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-14)
@@ -705,13 +709,13 @@ export function ReportsPage({ requests }: ReportsPageProps) {
 
   const bySupplier = useMemo(() => {
     const m = new Map<string, number>();
-    filtered.forEach((r) => { if (r.supplier && r.value && countsAsPurchase(r)) m.set(r.supplier, (m.get(r.supplier) ?? 0) + r.value); });
+    filtered.forEach((r) => { if (r.supplier && countsAsPurchase(r)) m.set(r.supplier, (m.get(r.supplier) ?? 0) + (r.value ?? 0)); });
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value], i) => ({ label, value, color: CAT[i % CAT.length] }));
   }, [filtered]);
 
   const byCategory = useMemo(() => {
     const m = new Map<string, number>();
-    filtered.forEach((r) => r.items.forEach((i) => { if (i.application) m.set(i.application, (m.get(i.application) ?? 0) + i.quantity); }));
+    filtered.filter(countsAsPurchase).forEach((r) => r.items.forEach((i) => { if (i.application) m.set(i.application, (m.get(i.application) ?? 0) + i.quantity); }));
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value], i) => ({ label, value, color: CAT[i % CAT.length] }));
   }, [filtered]);
 
@@ -747,7 +751,7 @@ export function ReportsPage({ requests }: ReportsPageProps) {
 
   const topProducts = useMemo(() => {
     const m = new Map<string, number>();
-    filtered.forEach((r) => r.items.forEach((i) => m.set(i.description, (m.get(i.description) ?? 0) + i.quantity)));
+    filtered.filter(countsAsPurchase).forEach((r) => r.items.forEach((i) => m.set(i.description, (m.get(i.description) ?? 0) + i.quantity)));
     return [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, value]) => ({ label, value }));
   }, [filtered]);
 
@@ -986,8 +990,27 @@ export function ReportsPage({ requests }: ReportsPageProps) {
                       { key: 'supplier', label: 'Fornecedor', value: (r) => r.supplier },
                       { key: 'product', label: 'Produto', value: (r) => r.product },
                       { key: 'quantity', label: 'Quantidade', value: (r) => r.quantity, align: 'right' },
-                      { key: 'unit', label: 'Valor Unitário', value: (r) => Math.round(r.unit * 100) / 100, render: (r) => (r.unit ? fmtBRL(r.unit) : '—'), exportValue: (r) => exportBRL(r.unit), align: 'right' },
-                      { key: 'total', label: 'Valor Total', value: (r) => Math.round(r.total * 100) / 100, render: (r) => (r.total ? <span className="font-semibold text-slate-800">{fmtBRL(r.total)}</span> : '—'), exportValue: (r) => exportBRL(r.total), align: 'right' },
+                      {
+                        key: 'unit', label: 'Valor Unit. (rateado)', value: (r) => Math.round(r.unit * 100) / 100,
+                        render: (r) => (
+                          <span title="Estimativa: valor total do pedido dividido proporcionalmente entre os itens — o sistema não registra o preço individual de cada item.">
+                            {r.unit ? fmtBRL(r.unit) : '—'}
+                          </span>
+                        ),
+                        exportValue: (r) => exportBRL(r.unit), align: 'right',
+                      },
+                      {
+                        key: 'total', label: 'Valor Total (rateado)', value: (r) => Math.round(r.total * 100) / 100,
+                        render: (r) => (
+                          <span
+                            className="font-semibold text-slate-800"
+                            title="Estimativa: valor total do pedido dividido proporcionalmente entre os itens — o sistema não registra o preço individual de cada item."
+                          >
+                            {r.total ? fmtBRL(r.total) : '—'}
+                          </span>
+                        ),
+                        exportValue: (r) => exportBRL(r.total), align: 'right',
+                      },
                       { key: 'date', label: 'Data', value: (r) => r.date, render: (r) => fmtDate(r.date), exportValue: (r) => fmtDate(r.date) },
                     ]}
                   />
