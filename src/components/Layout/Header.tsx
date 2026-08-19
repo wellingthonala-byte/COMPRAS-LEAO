@@ -10,9 +10,15 @@ interface HeaderProps {
   searchValue?: string;
   onSearchChange?: (v: string) => void;
   requests?: PurchaseRequest[];
+  /** Sobrescreve o botão "+ Nova Solicitação" — usado em telas cujo "novo"
+   * não é uma solicitação de compra (ex.: Ordens de Serviço). Sem isso, o
+   * botão sempre levava para /nova-solicitacao mesmo em telas onde criar
+   * uma solicitação de compra não fazia sentido. */
+  primaryActionLabel?: string;
+  onPrimaryAction?: () => void;
 }
 
-export function Header({ title, subtitle, searchValue, onSearchChange, requests = [] }: HeaderProps) {
+export function Header({ title, subtitle, searchValue, onSearchChange, requests = [], primaryActionLabel, onPrimaryAction }: HeaderProps) {
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -148,11 +154,11 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
           {testStatus ?? 'Testar ntfy'}
         </button>
         <button
-          onClick={() => navigate('/nova-solicitacao')}
+          onClick={onPrimaryAction ?? (() => navigate('/nova-solicitacao'))}
           className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
         >
           <Plus size={16} />
-          Nova Solicitação
+          {primaryActionLabel ?? 'Nova Solicitação'}
         </button>
       </div>
     </header>

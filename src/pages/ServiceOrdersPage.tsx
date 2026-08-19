@@ -424,7 +424,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   if (loading) {
     return (
       <div className="flex flex-col min-h-screen lg:pl-60 bg-slate-50">
-        <Header title="Ordens de Serviço" subtitle="Acompanhe o ciclo completo das ordens de serviço" requests={requests} />
+        <Header title="Ordens de Serviço" subtitle="Acompanhe o ciclo completo das ordens de serviço" requests={requests} primaryActionLabel="Nova Ordem de Serviço" onPrimaryAction={() => setShowNew(true)} />
         <div className="flex-1 pt-16 px-6 py-6 space-y-5 animate-pulse" aria-busy="true">
           <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
             {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-24 bg-slate-200/60 rounded-2xl" />)}
@@ -438,7 +438,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
 
   return (
     <div className="flex flex-col min-h-screen lg:pl-60 bg-slate-50">
-      <Header title="Ordens de Serviço" subtitle="Acompanhe o ciclo completo das ordens de serviço" requests={requests} />
+      <Header title="Ordens de Serviço" subtitle="Acompanhe o ciclo completo das ordens de serviço" requests={requests} primaryActionLabel="Nova Ordem de Serviço" onPrimaryAction={() => setShowNew(true)} />
 
       {toast && (
         <div className="fixed bottom-5 right-5 z-50 bg-slate-800 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2">
