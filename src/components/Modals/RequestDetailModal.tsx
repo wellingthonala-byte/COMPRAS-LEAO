@@ -620,13 +620,17 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                       </div>
                     ) : (
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <p className="font-semibold text-slate-800 text-sm">{item.description}</p>
+                        {/* min-w-0: sem isso, um item flex-1 nunca encolhe abaixo do
+                            conteúdo intrínseco — um link colado sem espaços (comum em
+                            "Especificação Técnica") empurrava o card inteiro pra fora
+                            da tela em vez de quebrar linha. */}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-800 text-sm break-words">{item.description}</p>
                           <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-500">
-                            <span>Aplicação: <strong className="text-slate-700">{item.application}</strong></span>
+                            <span className="break-words">Aplicação: <strong className="text-slate-700">{item.application}</strong></span>
                             <span>Previsão: <strong className="text-slate-700">{formatDate(item.deliveryForecast)}</strong></span>
-                            {item.technicalSpec && <span className="col-span-2">Especificação: <strong className="text-slate-700">{item.technicalSpec}</strong></span>}
-                            {item.observations && <span className="col-span-2">Obs: <em className="text-slate-600">{item.observations}</em></span>}
+                            {item.technicalSpec && <span className="col-span-2 break-all">Especificação: <strong className="text-slate-700">{item.technicalSpec}</strong></span>}
+                            {item.observations && <span className="col-span-2 break-all">Obs: <em className="text-slate-600">{item.observations}</em></span>}
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
