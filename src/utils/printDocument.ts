@@ -47,6 +47,7 @@ interface CompanyInfo {
   nome: string; razaoSocial: string; cnpj: string; ie: string;
   endereco: string; cidade: string; estado: string; cep: string;
   telefone: string; whatsapp: string; email: string; website: string;
+  logoUrl: string;
 }
 
 /** Dados da empresa vêm de Configurações › Geral; defaults do documento de referência. */
@@ -59,6 +60,7 @@ function loadCompany(): CompanyInfo {
     cidade: 'Maceió', estado: 'AL', cep: '57081-000',
     telefone: '(82) 3378-9202', whatsapp: '', email: '',
     website: 'https://tubosleaonordeste.com.br/',
+    logoUrl: '',
   };
   try {
     const raw = localStorage.getItem('compras-leao-settings');
@@ -77,6 +79,7 @@ function loadCompany(): CompanyInfo {
         whatsapp: c.whatsapp || '',
         email: c.email || '',
         website: c.website || defaults.website,
+        logoUrl: c.logoUrl || '',
       };
     }
   } catch { /* usa defaults */ }
@@ -210,7 +213,9 @@ function renderHTML(doc: PrintDoc): string {
 
   <div class="sheet">
     <div class="header">
-      <div class="logo">${esc(co.nome.trim().charAt(0).toUpperCase() || 'C')}</div>
+      ${co.logoUrl
+        ? `<img class="logo" src="${esc(co.logoUrl)}" alt="${esc(co.nome)}" style="object-fit:contain;background:#fff;border:1px solid #e2e8f0;" />`
+        : `<div class="logo">${esc(co.nome.trim().charAt(0).toUpperCase() || 'C')}</div>`}
       <div class="co">
         <h1>${esc(co.razaoSocial || co.nome)}</h1>
         ${co.website ? `<p>${esc(co.website)}</p>` : ''}

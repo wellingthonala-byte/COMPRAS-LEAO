@@ -2,6 +2,7 @@ import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCa
 import { NavLink } from 'react-router-dom';
 import { AppUser, canViewFinance } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
+import { useCompanyBranding } from '../../lib/useCompanyBranding';
 
 /** `financeOnly` esconde o item de quem não vê a projeção consolidada. */
 const navItems: { icon: typeof LayoutDashboard; label: string; to: string; financeOnly?: boolean }[] = [
@@ -23,14 +24,19 @@ interface SidebarProps {
 }
 
 export function Sidebar({ currentUser, onLogout }: SidebarProps) {
+  const branding = useCompanyBranding();
   return (
     <aside className="w-60 bg-white border-r border-slate-200 flex flex-col h-screen fixed left-0 top-0 z-30">
       <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-100">
-        <div className="w-9 h-9 bg-violet-600 rounded-xl flex items-center justify-center flex-shrink-0">
-          <ShoppingCart className="w-5 h-5 text-white" />
-        </div>
+        {branding.logoUrl ? (
+          <img src={branding.logoUrl} alt={branding.nome} className="w-9 h-9 rounded-xl object-contain bg-white border border-slate-200 flex-shrink-0" />
+        ) : (
+          <div className="w-9 h-9 bg-violet-600 rounded-xl flex items-center justify-center flex-shrink-0">
+            <ShoppingCart className="w-5 h-5 text-white" />
+          </div>
+        )}
         <div>
-          <p className="font-bold text-slate-800 text-sm leading-tight">Compras Leão</p>
+          <p className="font-bold text-slate-800 text-sm leading-tight">{branding.nome}</p>
           <p className="text-xs text-slate-400">Gestão de Compras</p>
         </div>
       </div>
