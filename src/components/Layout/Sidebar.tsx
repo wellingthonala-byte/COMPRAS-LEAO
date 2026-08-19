@@ -1,15 +1,18 @@
-import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut, ShieldCheck, PiggyBank, PlusCircle } from 'lucide-react';
+import { LayoutDashboard, Kanban, ClipboardList, BarChart3, Settings, ShoppingCart, LogOut, ShieldCheck, PlusCircle } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { AppUser, canViewFinance } from '../../data/users';
 import { colorFromInitials } from '../../utils/colors';
 
 /** `financeOnly` esconde o item de quem não vê a projeção consolidada. */
-const navItems = [
+const navItems: { icon: typeof LayoutDashboard; label: string; to: string; financeOnly?: boolean }[] = [
   { icon: LayoutDashboard, label: 'Dashboard', to: '/dashboard' },
   { icon: Kanban, label: 'Kanban', to: '/' },
   { icon: PlusCircle, label: 'Nova Solicitação', to: '/nova-solicitacao' },
   { icon: ClipboardList, label: 'Ordens de Serviço', to: '/ordens' },
-  { icon: PiggyBank, label: 'Financeiro', to: '/financeiro', financeOnly: true },
+  // Financeiro: temporariamente oculto do menu a pedido — o módulo continua
+  // funcionando (rota, dados, sincronização), só não aparece na navegação
+  // enquanto aguarda uma atualização. Reative removendo este comentário.
+  // { icon: PiggyBank, label: 'Financeiro', to: '/financeiro', financeOnly: true },
   { icon: BarChart3, label: 'Relatórios', to: '/relatorios' },
   { icon: Settings, label: 'Configurações', to: '/configuracoes' },
 ];

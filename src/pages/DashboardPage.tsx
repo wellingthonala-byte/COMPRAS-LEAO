@@ -545,8 +545,10 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
           </div>
         </div>
 
-        {/* Compromisso financeiro — visível a gestor e financeiro */}
-        {canViewFinance(currentUser.role) && (
+        {/* Compromisso financeiro — visível a gestor e financeiro.
+            Temporariamente oculto junto com a aba Financeiro (o card só leva
+            pra lá). Reative trocando "false &&" por "canViewFinance(...)". */}
+        {false && canViewFinance(currentUser.role) && (
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-2">
