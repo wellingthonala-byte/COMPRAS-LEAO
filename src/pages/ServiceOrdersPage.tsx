@@ -19,6 +19,7 @@ import { ObjectLinkInput, ObjectLinkView, normalizeUrl } from '../components/UI/
 import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
 import { normalizeOsUnit } from '../data/units';
+import { usePurchasingOptions } from '../lib/usePurchasingOptions';
 import {
   ServiceOrder, OSStatus, OSPriority, MaintenanceType, OS_FLOW, OS_COLUMNS,
   loadServiceOrders, saveServiceOrders, osCost, osIsOverdue,
@@ -55,7 +56,6 @@ const PRIORITY_BORDER: Record<OSPriority, string> = {
 const TYPES: MaintenanceType[] = ['Corretiva', 'Preventiva', 'Preditiva', 'Melhoria'];
 const PRIORITIES: OSPriority[] = ['Crítica', 'Alta', 'Média', 'Baixa'];
 const CATEGORIES = ['Mecânica', 'Elétrica', 'Hidráulica', 'Predial', 'TI', 'Outros'];
-const SECTORS = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
 
 const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtDate = (s?: string) => (s ? new Date(s.length === 10 ? s + 'T12:00:00' : s).toLocaleDateString('pt-BR') : '—');
@@ -93,6 +93,7 @@ interface ServiceOrdersPageProps {
 }
 
 export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseRequest }: ServiceOrdersPageProps) {
+  const { centrosCusto: SECTORS } = usePurchasingOptions();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<ServiceOrder[]>(loadServiceOrders);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -858,6 +859,7 @@ function NewOSModal({ currentUser, base, editing = false, onClose, onCreate, onS
   currentUser: AppUser; base?: ServiceOrder | null; editing?: boolean;
   onClose: () => void; onCreate: (os: ServiceOrder) => void; onSaveEdit?: (os: ServiceOrder) => void;
 }) {
+  const { centrosCusto: SECTORS } = usePurchasingOptions();
   const users = loadUsers();
   const [f, setF] = useState({
     title: base?.title ?? '', description: base?.description ?? '', type: (base?.type ?? 'Corretiva') as MaintenanceType,

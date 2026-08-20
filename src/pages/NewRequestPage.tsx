@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
-import { Priority, Sector, PurchaseRequest } from '../types';
+import { Priority, PurchaseRequest } from '../types';
 import { generateRequestNumber } from '../utils/numbering';
 import { sendNotification } from '../utils/notify';
 import { AppUser } from '../data/users';
 import { ObjectLinkInput, normalizeUrl } from '../components/UI/ObjectLink';
 import { UNITS, DEFAULT_UNIT } from '../data/units';
+import { usePurchasingOptions } from '../lib/usePurchasingOptions';
 
 interface ItemForm {
   id: string;
@@ -29,8 +30,6 @@ interface NewRequestPageProps {
 }
 
 const priorities: Priority[] = ['Não Urgente', 'Urgente', 'Máquina Parada'];
-const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
-const applications = ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'];
 
 function newItem(): ItemForm {
   return { id: crypto.randomUUID(), description: '', quantity: 1, unit: DEFAULT_UNIT, application: '', priority: 'Não Urgente', deliveryForecast: '', technicalSpec: '', observations: '', link: '' };
@@ -45,8 +44,9 @@ function getInitials(name: string): string {
 
 export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageProps) {
   const navigate = useNavigate();
+  const { centrosCusto: sectors, categorias: applications } = usePurchasingOptions();
   const [requester, setRequester] = useState(currentUser.name);
-  const [sector, setSector] = useState<Sector | ''>('');
+  const [sector, setSector] = useState('');
   const [priority, setPriority] = useState<Priority>('Não Urgente');
   const [observations, setObservations] = useState('');
   const [objectLink, setObjectLink] = useState('');
@@ -92,7 +92,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
       number,
       requester,
       requesterInitials: initials,
-      sector: sector as Sector,
+      sector,
       priority,
       status: 'Nova Solicitação',
       createdAt: now,
@@ -168,7 +168,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Setor <span className="text-red-500">*</span></label>
-                <select required value={sector} onChange={(e) => setSector(e.target.value as Sector)}
+                <select required value={sector} onChange={(e) => setSector(e.target.value)}
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700">
                   <option value="">Selecione o setor</option>
                   {sectors.map((s) => <option key={s} value={s}>{s}</option>)}

@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { StackedBars, ChartEmpty } from '../components/UI/ChartKit';
-import { PurchaseRequest, Priority, Sector } from '../types';
+import { PurchaseRequest, Priority } from '../types';
 import { InstallmentStatus } from '../types/finance';
 import { AppUser, canViewFinance } from '../data/users';
 import { exportCSV, exportExcel, exportName } from '../utils/export';
@@ -15,6 +15,7 @@ import { getFinanceSettings } from '../lib/financeSettings';
 import { BackfillPanel } from '../components/Finance/BackfillPanel';
 import { clearFinanceLog, pendingCount, readFinanceLog, useInstallments } from '../lib/financeStore';
 import { reconcile } from '../lib/financeSync';
+import { usePurchasingOptions } from '../lib/usePurchasingOptions';
 import {
   applyFilters, commitmentSummary, EMPTY_FILTERS, EXPORT_HEADERS, exportRows, FinanceFilters,
   filterOptions, groupByRequest, hasActiveFilters, joinInstallments, limboRequests, monthLabelLong,
@@ -26,7 +27,6 @@ const fmtCompact = (v: number) =>
 const fmtDate = (iso: string) => new Date(iso.slice(0, 10) + 'T12:00:00').toLocaleDateString('pt-BR');
 
 const PRIORITIES: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
-const SECTORS: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
 const STATUSES: InstallmentStatus[] = ['Previsto', 'Confirmado', 'Pago', 'Cancelado'];
 
 const SEGMENTS = [
@@ -67,6 +67,7 @@ function Kpi({ icon: Icon, label, value, note, tone }: {
 
 export function FinancePage({ requests, setRequests, currentUser }: FinancePageProps) {
   const navigate = useNavigate();
+  const { centrosCusto: SECTORS } = usePurchasingOptions();
   const installments = useInstallments();
   const [filters, setFilters] = useState<FinanceFilters>(EMPTY_FILTERS);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
@@ -244,7 +245,7 @@ export function FinancePage({ requests, setRequests, currentUser }: FinancePageP
                 <option value="">Todas as prioridades</option>
                 {PRIORITIES.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
-              <select value={filters.sector ?? ''} onChange={(e) => patch({ sector: e.target.value as Sector | '' })}
+              <select value={filters.sector ?? ''} onChange={(e) => patch({ sector: e.target.value })}
                 className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500">
                 <option value="">Todos os setores</option>
                 {SECTORS.map((s) => <option key={s} value={s}>{s}</option>)}

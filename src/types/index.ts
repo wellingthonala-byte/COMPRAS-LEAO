@@ -2,7 +2,14 @@ import { PaymentTerms, ValueApproval } from './finance';
 
 export type Priority = 'Não Urgente' | 'Urgente' | 'Máquina Parada';
 export type Status = 'Nova Solicitação' | 'Em Aprovação' | 'Em Cotação' | 'Comprado' | 'Em Rota' | 'Em Serviço' | 'Disponível para Retirada' | 'Finalizado' | 'Cancelada';
-export type Sector = 'Produção' | 'Manutenção' | 'Administrativo' | 'TI' | 'RH' | 'Logística';
+/**
+ * Centro de custo/setor da solicitação. Era uma união fixa de 6 valores —
+ * cadastrar um setor novo em Configurações › Compras › Listas do Processo
+ * salvava, mas nada aceitava esse valor porque o tipo só permitia os 6
+ * originais. Agora é a lista dinâmica (ver src/lib/usePurchasingOptions.ts);
+ * o tipo continua `Sector` só por legibilidade.
+ */
+export type Sector = string;
 
 export interface Item {
   id: string;

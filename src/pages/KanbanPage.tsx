@@ -5,15 +5,15 @@ import { Header } from '../components/Layout/Header';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { RequestDetailModal } from '../components/Modals/RequestDetailModal';
 import { STATUS_ORDER, computeSkipTarget } from '../data/mockData';
-import { PurchaseRequest, Priority, Sector, Status, HistoryEntry } from '../types';
+import { PurchaseRequest, Priority, Status, HistoryEntry } from '../types';
 import { ValueApproval } from '../types/finance';
 import { sendNotification } from '../utils/notify';
 import { formatPaymentTerms } from '../lib/paymentTerms';
 import { blocksAdvanceForValueApproval, cancelInstallmentsForInvalidatedApproval, canProjectInstallments, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
 import { AppUser } from '../data/users';
+import { usePurchasingOptions } from '../lib/usePurchasingOptions';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
-const sectors: Sector[] = ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'];
 
 interface KanbanPageProps {
   requests: PurchaseRequest[];
@@ -22,11 +22,12 @@ interface KanbanPageProps {
 }
 
 export function KanbanPage({ requests, setRequests, currentUser }: KanbanPageProps) {
+  const { centrosCusto: sectors } = usePurchasingOptions();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | ''>('');
-  const [filterSector, setFilterSector] = useState<Sector | ''>('');
+  const [filterSector, setFilterSector] = useState('');
 
   const selectedRequest = requests.find((r) => r.id === selectedId);
 
@@ -343,7 +344,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
           </select>
           <select
             value={filterSector}
-            onChange={(e) => setFilterSector(e.target.value as Sector | '')}
+            onChange={(e) => setFilterSector(e.target.value)}
             className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
           >
             <option value="">Todos os Setores</option>
