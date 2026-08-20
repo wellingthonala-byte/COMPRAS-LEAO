@@ -65,12 +65,19 @@ const BACKUP_SCHEMA_VERSION = 1;
  *  se o Supabase estiver fora do ar. A fonte de verdade é a tabela app_settings. */
 const SETTINGS_CACHE_KEY = 'compras-leao-settings';
 
-/** Módulos protegidos por cadeado — chaves iguais às de SECTIONS (critical: true). */
+/** Módulos protegidos por cadeado — chaves iguais às de SECTIONS (critical: true).
+ *  ATENÇÃO: todo módulo listado aqui precisa ter linha correspondente em
+ *  role_permissions (ver supabase/migrations/), senão isModuleAllowed nega
+ *  por padrão e a aba fica trancada até para admin/gestor. */
 const CRITICAL_MODULES: { key: string; label: string }[] = [
+  { key: 'geral', label: 'Geral' },
+  { key: 'identidade', label: 'Identidade Visual' },
   { key: 'usuarios', label: 'Usuários' },
   { key: 'perfis', label: 'Perfis e Permissões' },
+  { key: 'aprovacao', label: 'Fluxo de Aprovação' },
   { key: 'seguranca', label: 'Segurança' },
   { key: 'backup', label: 'Backup' },
+  { key: 'personalizacao', label: 'Personalização' },
   { key: 'auditoria', label: 'Auditoria' },
   { key: 'banco', label: 'Banco de Dados' },
   { key: 'compras', label: 'Compras' },
@@ -136,18 +143,18 @@ type SectionKey =
   | 'personalizacao' | 'auditoria' | 'banco';
 
 const SECTIONS: { key: SectionKey; label: string; icon: typeof Building2; critical?: boolean; keywords: string }[] = [
-  { key: 'geral', label: 'Geral', icon: Building2, keywords: 'empresa cnpj razão social endereço telefone email' },
-  { key: 'identidade', label: 'Identidade Visual', icon: Palette, keywords: 'logo cor tema fonte marca claro escuro' },
+  { key: 'geral', label: 'Geral', icon: Building2, critical: true, keywords: 'empresa cnpj razão social endereço telefone email' },
+  { key: 'identidade', label: 'Identidade Visual', icon: Palette, critical: true, keywords: 'logo cor tema fonte marca claro escuro' },
   { key: 'usuarios', label: 'Usuários', icon: Users, critical: true, keywords: 'usuário senha cargo criar editar excluir' },
   { key: 'perfis', label: 'Perfis e Permissões', icon: ShieldCheck, critical: true, keywords: 'permissão perfil administrador módulo acesso' },
-  { key: 'aprovacao', label: 'Fluxo de Aprovação', icon: GitBranch, keywords: 'aprovação alçada valor aprovador nível' },
+  { key: 'aprovacao', label: 'Fluxo de Aprovação', icon: GitBranch, critical: true, keywords: 'aprovação alçada valor aprovador nível' },
   { key: 'compras', label: 'Compras', icon: ShoppingCart, critical: true, keywords: 'numeração prefixo sla prioridade categoria centro de custo' },
   { key: 'fornecedores', label: 'Fornecedores', icon: Truck, critical: true, keywords: 'fornecedor avaliação score homologação bloqueio' },
   { key: 'financeiro', label: 'Financeiro', icon: PiggyBank, critical: true, keywords: 'financeiro parcela previsão vencimento feriado limbo comprometido caixa' },
   { key: 'notificacoes', label: 'Notificações', icon: Bell, critical: true, keywords: 'notificação push ntfy alerta' },
   { key: 'seguranca', label: 'Segurança', icon: Lock, critical: true, keywords: 'mfa sessão ip sso login auditoria log' },
   { key: 'backup', label: 'Backup', icon: DatabaseBackup, critical: true, keywords: 'backup restauração download exportar importar' },
-  { key: 'personalizacao', label: 'Personalização', icon: SlidersHorizontal, keywords: 'idioma fuso horário formato data moeda rodapé' },
+  { key: 'personalizacao', label: 'Personalização', icon: SlidersHorizontal, critical: true, keywords: 'idioma fuso horário formato data moeda rodapé' },
   { key: 'auditoria', label: 'Auditoria', icon: ScrollText, critical: true, keywords: 'auditoria log alteração histórico quem alterou' },
   { key: 'banco', label: 'Banco de Dados', icon: Database, critical: true, keywords: 'banco dados espaço integridade registros' },
 ];
@@ -362,8 +369,18 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Se uma gravação já estiver em andamento quando outra é pedida, a versão
+  // mais nova fica aqui em vez de ser descartada — sem isso, editar rápido
+  // (ex.: clicar "Adicionar" duas vezes seguidas em Listas do Processo antes
+  // do primeiro upsert responder) fazia a segunda edição sumir em silêncio:
+  // o mutex `savingRef` recusava a segunda chamada com um `return` mudo, o
+  // "Tudo salvo" ficava verde do mesmo jeito (referente à v1), e a v2 nunca
+  // chegava ao servidor — reaparecendo como "os itens somem depois de
+  // recarregar", mesmo a tela nunca tendo mostrado erro nenhum.
+  const pendingSaveRef = useRef<AppSettings | null>(null);
+
   const saveNow = async (data: AppSettings) => {
-    if (savingRef.current) return;
+    if (savingRef.current) { pendingSaveRef.current = data; return; }
     savingRef.current = true;
     setSaveState('saving');
     setSaveError(null);
@@ -376,6 +393,11 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
       setSaveError(e instanceof Error ? e.message : 'Falha ao salvar');
     } finally {
       savingRef.current = false;
+      if (pendingSaveRef.current) {
+        const next = pendingSaveRef.current;
+        pendingSaveRef.current = null;
+        void saveNow(next);
+      }
     }
   };
 
