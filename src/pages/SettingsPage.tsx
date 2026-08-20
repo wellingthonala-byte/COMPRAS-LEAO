@@ -34,7 +34,7 @@ export interface AppSettings {
   purchasing: {
     numeracaoAutomatica: boolean; prefixo: string; slaHorasMaquinaParada: string;
     slaHorasUrgente: string; prioridadePadrao: string;
-    categorias: string[]; centrosCusto: string[]; tiposSolicitacao: string[];
+    categorias: string[]; centrosCusto: string[]; tiposSolicitacao: string[]; clientesOS: string[];
   };
   suppliers: {
     categorias: string[]; criterioPrazo: number; criterioPreco: number; criterioQualidade: number;
@@ -99,7 +99,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   company: { nome: 'Compras Leão', razaoSocial: '', fantasia: '', cnpj: '', ie: '', endereco: '', cidade: '', estado: '', cep: '', pais: 'Brasil', telefone: '', whatsapp: '', email: '', website: '', logoUrl: '' },
   branding: { primaryColor: '#435A79', secondaryColor: '#0f172a', theme: 'claro', font: 'IBM Plex Sans' },
   approval: { niveis: 1, aprovacaoPorValor: false, valorAlcada: '', aprovacaoPorSetor: false, autoAprovarAbaixo: '', aprovacaoObrigatoria: true },
-  purchasing: { numeracaoAutomatica: true, prefixo: '#', slaHorasMaquinaParada: '4', slaHorasUrgente: '24', prioridadePadrao: 'Não Urgente', categorias: ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'], centrosCusto: ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'], tiposSolicitacao: ['Material', 'Serviço'] },
+  purchasing: { numeracaoAutomatica: true, prefixo: '#', slaHorasMaquinaParada: '4', slaHorasUrgente: '24', prioridadePadrao: 'Não Urgente', categorias: ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'], centrosCusto: ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'], tiposSolicitacao: ['Material', 'Serviço'], clientesOS: [] },
   suppliers: { categorias: [], criterioPrazo: 40, criterioPreco: 40, criterioQualidade: 20, prazoAlvoDias: '7', homologacaoObrigatoria: false, bloqueados: [] },
   finance: { limboDays: '7', extraHolidays: [], backfillTermsId: '30', limboAlertEnabled: true },
   notifications: { pushEnabled: true, ntfyTopic: 'clleao9274', emailEnabled: false, whatsappEnabled: false, evAprovacao: true, evReprovacao: true, evCompras: true, evRecebimento: true, evNovas: true },
@@ -978,6 +978,7 @@ function PurchasingSection({ settings, patch }: { settings: AppSettings; patch: 
           <TagEditor label="Categorias (aplicação)" tags={p.categorias} onChange={(t) => patch('purchasing', { categorias: t })} />
           <TagEditor label="Centros de custo (setores)" tags={p.centrosCusto} onChange={(t) => patch('purchasing', { centrosCusto: t })} />
           <TagEditor label="Tipos de solicitação" tags={p.tiposSolicitacao} onChange={(t) => patch('purchasing', { tiposSolicitacao: t })} />
+          <TagEditor label="Clientes de O.S." tags={p.clientesOS} onChange={(t) => patch('purchasing', { clientesOS: t })} placeholder="Ex.: Interno, Empresa X..." />
         </div>
       </Card>
     </div>

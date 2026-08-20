@@ -7,6 +7,8 @@ export interface PurchasingOptions {
   categorias: string[];
   centrosCusto: string[];
   tiposSolicitacao: string[];
+  /** Clientes de O.S. cadastrados pelo comprador — lista fixa, não texto livre. */
+  clientesOS: string[];
 }
 
 /** Usado só enquanto nada carregou ainda (cache vazio e Supabase não respondeu). */
@@ -14,6 +16,7 @@ const FALLBACK: PurchasingOptions = {
   categorias: ['Manutenção Geral', 'Produção', 'EPI', 'Escritório', 'TI', 'Logística'],
   centrosCusto: ['Produção', 'Manutenção', 'Administrativo', 'TI', 'RH', 'Logística'],
   tiposSolicitacao: ['Material', 'Serviço'],
+  clientesOS: [],
 };
 
 function readCache(): PurchasingOptions {
@@ -25,6 +28,7 @@ function readCache(): PurchasingOptions {
         categorias: Array.isArray(p.categorias) && p.categorias.length > 0 ? p.categorias : FALLBACK.categorias,
         centrosCusto: Array.isArray(p.centrosCusto) && p.centrosCusto.length > 0 ? p.centrosCusto : FALLBACK.centrosCusto,
         tiposSolicitacao: Array.isArray(p.tiposSolicitacao) && p.tiposSolicitacao.length > 0 ? p.tiposSolicitacao : FALLBACK.tiposSolicitacao,
+        clientesOS: Array.isArray(p.clientesOS) ? p.clientesOS : FALLBACK.clientesOS,
       };
     }
   } catch { /* cache corrompido: usa padrão */ }
@@ -53,6 +57,7 @@ export function usePurchasingOptions(): PurchasingOptions {
           categorias: p.categorias && p.categorias.length > 0 ? p.categorias : FALLBACK.categorias,
           centrosCusto: p.centrosCusto && p.centrosCusto.length > 0 ? p.centrosCusto : FALLBACK.centrosCusto,
           tiposSolicitacao: p.tiposSolicitacao && p.tiposSolicitacao.length > 0 ? p.tiposSolicitacao : FALLBACK.tiposSolicitacao,
+          clientesOS: p.clientesOS ?? FALLBACK.clientesOS,
         });
       })
       .catch(() => { /* offline/sem sessão: mantém o que já está pintado */ });

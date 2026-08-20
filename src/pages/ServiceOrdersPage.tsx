@@ -859,7 +859,7 @@ function NewOSModal({ currentUser, base, editing = false, onClose, onCreate, onS
   currentUser: AppUser; base?: ServiceOrder | null; editing?: boolean;
   onClose: () => void; onCreate: (os: ServiceOrder) => void; onSaveEdit?: (os: ServiceOrder) => void;
 }) {
-  const { centrosCusto: SECTORS } = usePurchasingOptions();
+  const { centrosCusto: SECTORS, clientesOS: CUSTOMERS } = usePurchasingOptions();
   const users = loadUsers();
   const [f, setF] = useState({
     title: base?.title ?? '', description: base?.description ?? '', type: (base?.type ?? 'Corretiva') as MaintenanceType,
@@ -941,7 +941,10 @@ function NewOSModal({ currentUser, base, editing = false, onClose, onCreate, onS
               </div>
               <div>
                 <label className={label}>Cliente</label>
-                <input value={f.customer} onChange={(e) => set('customer')(e.target.value)} className={input} placeholder="Cliente interno ou externo" />
+                <select value={f.customer} onChange={(e) => set('customer')(e.target.value)} className={input}>
+                  <option value="">Selecione...</option>
+                  {CUSTOMERS.map((c) => <option key={c}>{c}</option>)}
+                </select>
               </div>
               <div>
                 <label className={label}>Tipo de manutenção</label>
