@@ -11,7 +11,7 @@ import { ServiceOrdersPage } from './pages/ServiceOrdersPage';
 import { LoginPage } from './pages/LoginPage';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
-import { fetchRequests, insertStatusHistory, logoutSupabase } from './lib/backend';
+import { fetchRequests, insertStatusHistory, logoutSupabase, revalidateSession } from './lib/backend';
 import { initInstallments } from './lib/financeStore';
 import { useLimboAlert } from './lib/useFinanceAlerts';
 import { enqueueRequests, flushRequestQueue, getQueuedRequests, pendingRequestSyncCount, syncRequests } from './lib/requestSyncQueue';
@@ -179,6 +179,28 @@ export default function App() {
   // Alerta de pedidos aprovados e não comprados. Fica aqui, e não na tela do
   // Financeiro, para disparar no login independentemente da página aberta.
   useLimboAlert(requests, currentUser);
+
+  // Fecha a escalação de privilégio de editar `compras-leao-user` no
+  // localStorage: o papel era aceito sem checagem nenhuma no boot, então
+  // trocar "role":"solicitante" por "role":"gestor" e recarregar bastava
+  // para aprovar mérito/valor em nome de outra pessoa. Revalida contra o
+  // Supabase assim que a sessão é uma sessão real — se a sessão não existir
+  // mais ou for de outro usuário, desloga; se só não der pra verificar
+  // agora (rede fora), não mexe em nada (mesma tolerância a offline que o
+  // resto do app já tem).
+  useEffect(() => {
+    if (!currentUser || currentUser.authSource !== 'supabase') return;
+    let cancelled = false;
+    revalidateSession(currentUser).then((result) => {
+      if (cancelled) return;
+      if (result.status === 'invalid') {
+        setCurrentUser(null);
+      } else if (result.status === 'ok' && (result.user.role !== currentUser.role || result.user.name !== currentUser.name)) {
+        setCurrentUser(result.user);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
 
   const handleLogout = () => {
     logoutSupabase();

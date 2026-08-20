@@ -196,6 +196,30 @@ export async function syncRequestFinance(request: PurchaseRequest, opts: SyncOpt
   }
 }
 
+/**
+ * Cancela as parcelas de um pedido cuja aprovação de valor deixou de valer
+ * (ex.: comprador editou valor/condição depois do gestor já ter aprovado).
+ * `deriveInstallments` sozinha NÃO serve pra isso: sem `valueApproval` ela
+ * devolve `null` ("sem compromisso"), e `syncRequestFinance` trata `null`
+ * como "não mexe em nada" — as parcelas antigas ficariam Previsto/Confirmado
+ * pra sempre, contando num compromisso que não tem mais aprovação nenhuma
+ * cobrindo ele. Espelha o que já acontece quando o pedido é cancelado
+ * (deriveInstallments, ramo 'Cancelada'), só que disparado pela invalidação
+ * da aprovação em vez de pelo status.
+ */
+export async function cancelInstallmentsForInvalidatedApproval(requestId: string, requestNumber: string, now: string): Promise<void> {
+  try {
+    const existing = installmentsOf(requestId);
+    if (existing.length === 0) return;
+    const cancelled = cancelInstallments(existing, now, 'Aprovação de valor invalidada — valor/condição alterados após a aprovação do gestor.');
+    const changed = diffInstallments(existing, cancelled);
+    if (changed.length === 0) return;
+    await saveInstallments(changed, requestNumber);
+  } catch (e) {
+    logFinanceError(requestNumber, `Falha ao cancelar parcelas da aprovação invalidada: ${String(e)}`);
+  }
+}
+
 export interface ReconcileReport {
   /** Pedidos avaliados. */
   checked: number;

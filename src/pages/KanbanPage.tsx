@@ -9,7 +9,7 @@ import { PurchaseRequest, Priority, Sector, Status, HistoryEntry } from '../type
 import { ValueApproval } from '../types/finance';
 import { sendNotification } from '../utils/notify';
 import { formatPaymentTerms } from '../lib/paymentTerms';
-import { blocksAdvanceForValueApproval, canProjectInstallments, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
+import { blocksAdvanceForValueApproval, cancelInstallmentsForInvalidatedApproval, canProjectInstallments, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
 import { AppUser } from '../data/users';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
@@ -194,16 +194,41 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
 
   const handleEdit = (id: string, fields: Partial<PurchaseRequest>) => {
     const before = requests.find((r) => r.id === id);
-    setRequests((prev) => prev.map((r) => (r.id !== id ? r : { ...r, ...fields })));
     if (!before) return;
 
-    // Valor, condição de pagamento e data da NF alimentam a projeção: se algum
-    // deles mudou num pedido já aprovado, as parcelas são recalculadas. É o
-    // caminho normal quando a NF chega depois da entrada em "Comprado".
+    // Valor e condição de pagamento são exatamente o que o gestor aprovou —
+    // alterá-los depois da aprovação sem invalidá-la deixava o comprador criar
+    // (ou inflar) o compromisso financeiro sem nenhum novo aprovador olhar pra
+    // isso: as parcelas eram só reprojetadas silenciosamente para o valor novo.
+    // fiscalNoteDate fica de fora dessa trava — só desloca a data-base do
+    // parcelamento já aprovado, não o valor nem a condição.
+    const approvalFields: (keyof PurchaseRequest)[] = ['value', 'paymentTerms'];
+    const touchedApproval = approvalFields.some((k) => k in fields && fields[k] !== before[k]);
+    const invalidatesApproval = touchedApproval && !!before.valueApproval;
+    const nextFields: Partial<PurchaseRequest> = invalidatesApproval ? { ...fields, valueApproval: undefined } : fields;
+
+    setRequests((prev) => prev.map((r) => (r.id !== id ? r : {
+      ...r,
+      ...nextFields,
+      ...(invalidatesApproval ? {
+        history: [...r.history, entry(
+          `Valor/condição alterados após a aprovação — aprovação de valor invalidada, requer nova aprovação do gestor`
+        )],
+      } : {}),
+    })));
+
     const financeFields: (keyof PurchaseRequest)[] = ['value', 'paymentTerms', 'fiscalNoteDate'];
     const touched = financeFields.some((k) => k in fields);
-    if (touched && before.valueApproval) {
-      void syncRequestFinance({ ...before, ...fields });
+    if (touched && before.valueApproval && !invalidatesApproval) {
+      // Só fiscalNoteDate mudou (valor/condição intactos): recalcula a
+      // data-base normalmente, sem exigir nova aprovação.
+      void syncRequestFinance({ ...before, ...nextFields });
+    } else if (invalidatesApproval) {
+      // Aprovação invalidada: cancela de fato as parcelas antigas — sem
+      // valueApproval, deriveInstallments devolve null e syncRequestFinance
+      // não mexeria em nada, deixando as parcelas antigas penduradas como
+      // compromisso sem aprovação nenhuma cobrindo elas.
+      void cancelInstallmentsForInvalidatedApproval(before.id, before.number, new Date().toISOString());
     }
   };
 
@@ -216,6 +241,12 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     if (currentUser.role !== 'gestor') return;
     const req = requests.find((r) => r.id === id);
     if (!req || req.valueApproval || !canProjectInstallments(req)) return;
+    // Defesa em profundidade — a UI já esconde o botão nesses dois casos,
+    // mas o handler não pode confiar só nisso: objeção pendente não pode
+    // virar compromisso financeiro, e um gestor não aprova a própria compra.
+    const openObjections = req.items.reduce((acc, item) => acc + (item.objections || []).filter((o) => !o.resolved).length, 0);
+    if (openObjections > 0) return;
+    if (req.requester === currentUser.name) return;
 
     const now = new Date().toISOString();
     const valueApproval: ValueApproval = {
@@ -250,6 +281,9 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   const handleApprove = (id: string, approverName: string, approvalId: string) => {
     if (currentUser.role !== 'gestor') return;
     const req = requests.find((r) => r.id === id);
+    // Idempotência (duplo clique não regrava) + segregação de funções (o
+    // gestor não aprova a própria solicitação) — checado aqui, não só na UI.
+    if (!req || req.approvedBy || req.requester === approverName) return;
     setRequests((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;

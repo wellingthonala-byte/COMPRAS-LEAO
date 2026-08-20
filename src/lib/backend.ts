@@ -481,6 +481,22 @@ export async function upsertInstallments(items: Installment[]): Promise<void> {
 /* ================================================================== */
 /* Autenticação (Supabase Auth + papéis de user_roles)                  */
 /* ================================================================== */
+/**
+ * admin herda a visão do gestor (inclusive a projeção financeira consolidada).
+ * 'compras' vem antes de 'financeiro' na precedência: o papel operacional é
+ * mais restritivo em capacidades (avançar pedido, cancelar, editar cotação,
+ * pular etapa) e não pode ficar sem elas quando alguém acumula os dois
+ * papéis — 'financeiro' é só consultivo (FINDING 27). Mitigação pontual:
+ * a correção completa exigiria guardar dbRoles: string[] e derivar
+ * capacidades da união dos papéis, o que toca comparações `role === 'x'`
+ * pelo projeto inteiro — fora do escopo desta correção.
+ */
+function roleFromDbRoles(dbRoles: string[]): Role {
+  return dbRoles.includes('admin') || dbRoles.includes('gestor') ? 'gestor'
+    : dbRoles.includes('compras') ? 'comprador'
+    : dbRoles.includes('financeiro') ? 'financeiro' : 'solicitante';
+}
+
 export async function loginWithSupabase(email: string, password: string): Promise<AppUser | null> {
   const sb = getSupabase();
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
@@ -492,28 +508,56 @@ export async function loginWithSupabase(email: string, password: string): Promis
   ]);
   const name = profile?.full_name ?? data.user.email ?? 'Usuário';
   const dbRoles: string[] = (roles ?? []).map((r: { role: string }) => r.role);
-  // admin herda a visão do gestor (inclusive a projeção financeira consolidada).
-  // 'compras' vem antes de 'financeiro' na precedência: o papel operacional é
-  // mais restritivo em capacidades (avançar pedido, cancelar, editar cotação,
-  // pular etapa) e não pode ficar sem elas quando alguém acumula os dois
-  // papéis — 'financeiro' é só consultivo (FINDING 27). Mitigação pontual:
-  // a correção completa exigiria guardar dbRoles: string[] e derivar
-  // capacidades da união dos papéis, o que toca comparações `role === 'x'`
-  // pelo projeto inteiro — fora do escopo desta correção.
-  const role: Role = dbRoles.includes('admin') || dbRoles.includes('gestor') ? 'gestor'
-    : dbRoles.includes('compras') ? 'comprador'
-    : dbRoles.includes('financeiro') ? 'financeiro' : 'solicitante';
   return {
     id: uid,
     name,
     email: data.user.email ?? undefined,
     password: '',
-    role,
+    role: roleFromDbRoles(dbRoles),
     initials: name.trim().slice(0, 2).toUpperCase(),
     active: true,
     lastLogin: new Date().toISOString(),
     authSource: 'supabase',
   };
+}
+
+export type RevalidateResult =
+  | { status: 'ok'; user: AppUser }        // sessão válida, papel confirmado (ou corrigido)
+  | { status: 'invalid' }                   // sessão inexistente/de outro usuário: precisa deslogar
+  | { status: 'unknown' };                  // não deu pra verificar agora (rede fora) — não mexe em nada
+
+/**
+ * Revalida contra o Supabase o usuário que está no localStorage — fecha a
+ * escalação de privilégio de simplesmente editar `compras-leao-user` no
+ * navegador (`role` era aceito sem checagem nenhuma no boot). Só se aplica a
+ * sessões reais (authSource 'supabase'); login local de teste nunca teve
+ * sessão no Supabase para validar contra.
+ */
+export async function revalidateSession(current: AppUser): Promise<RevalidateResult> {
+  const sb = getSupabase();
+  let session;
+  try {
+    ({ data: { session } } = await sb.auth.getSession());
+  } catch {
+    return { status: 'unknown' };
+  }
+  if (!session || session.user.id !== current.id) return { status: 'invalid' };
+  try {
+    const [{ data: profile, error: pErr }, { data: roles, error: rErr }] = await Promise.all([
+      sb.from('profiles').select('full_name, sector').eq('id', current.id).maybeSingle(),
+      sb.from('user_roles').select('role').eq('user_id', current.id),
+    ]);
+    if (pErr || rErr) return { status: 'unknown' };
+    const name = profile?.full_name ?? current.name;
+    const dbRoles: string[] = (roles ?? []).map((r: { role: string }) => r.role);
+    const role = roleFromDbRoles(dbRoles);
+    return {
+      status: 'ok',
+      user: { ...current, name, role, initials: name.trim().slice(0, 2).toUpperCase() },
+    };
+  } catch {
+    return { status: 'unknown' };
+  }
 }
 
 export async function logoutSupabase(): Promise<void> {

@@ -250,9 +250,16 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
   const handleSaveSupplier = () => {
     let newValue: number | undefined;
     if (supplierDraft.value) {
-      const parsed = parseFloat(supplierDraft.value.replace(/\./g, '').replace(',', '.'));
-      if (isNaN(parsed)) {
-        setSupplierValueError('Valor inválido. Use o formato 1.500,00.');
+      const raw = supplierDraft.value.trim();
+      // Só aceita o formato pt-BR explícito (milhar com ponto opcional, até
+      // duas casas decimais com vírgula) — "1234.56" (decimal em inglês) não
+      // bate nesse regex e é rejeitado, em vez de ser lido como "123456"
+      // (o `.replace(/\./g,'')` antigo tratava QUALQUER ponto como separador
+      // de milhar, inflando o valor em 100x sem erro nenhum).
+      const valid = /^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+(,\d{1,2})?$/.test(raw);
+      const parsed = valid ? parseFloat(raw.replace(/\./g, '').replace(',', '.')) : NaN;
+      if (isNaN(parsed) || parsed <= 0) {
+        setSupplierValueError('Valor inválido. Use o formato 1.500,00 (maior que zero).');
         return;
       }
       newValue = parsed;
@@ -400,13 +407,13 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   <div className="mt-0.5 text-sm">
                     <ObjectLinkView
                       url={request.objectLink}
-                      onSave={(url) => onEdit(request.id, {
+                      onSave={currentUser.role === 'comprador' || currentUser.role === 'gestor' ? (url) => onEdit(request.id, {
                         objectLink: url,
                         history: [...request.history, {
                           id: `h-${Date.now()}`, date: new Date().toISOString(), user: currentUser.name,
                           action: url ? `Link do objeto ${request.objectLink ? 'alterado' : 'adicionado'}: ${url}` : 'Link do objeto removido',
                         }],
-                      })}
+                      }) : undefined}
                     />
                   </div>
                 </div>
@@ -571,7 +578,13 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                       )}
                     </div>
 
-                    {openObjections.length > 0 && editingItemId !== item.id && (
+                    {/* Corrigir via objeção é do solicitante DONO deste pedido (é ele quem
+                        deve arrumar o que o comprador/gestor apontou) ou do próprio
+                        comprador — nunca de um solicitante qualquer, e nunca depois de
+                        "Comprado": editar um item já comprado por essa porta deixaria o
+                        pedido e o compromisso financeiro divergentes silenciosamente. */}
+                    {openObjections.length > 0 && editingItemId !== item.id && !purchasedOrLater
+                      && (currentUser.role === 'comprador' || currentUser.name === request.requester) && (
                       <button onClick={() => handleStartEditItem(item)}
                         className="w-full mb-3 flex items-center justify-center gap-2 text-sm text-white font-semibold bg-orange-500 hover:bg-orange-600 border border-orange-500 px-3 py-2 rounded-lg transition-colors">
                         <Edit3 size={13} /> Editar e Corrigir este Item
@@ -725,7 +738,12 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                           </button>
                         </div>
                       </div>
-                    ) : (
+                    ) : (currentUser.role === 'comprador' || currentUser.role === 'gestor') && !isCancelled && (
+                      // Objeção é quem revisa a cotação apontando o que precisa de correção
+                      // (comprador/gestor) — não o próprio solicitante, que é quem recebe e
+                      // corrige (ver botão "Editar e Corrigir" acima). Sem essa restrição, o
+                      // solicitante podia abrir objeção na própria solicitação só para
+                      // destravar a edição de um item já em qualquer status.
                       <button onClick={() => setObjectionItemId(item.id)}
                         className="mt-3 flex items-center gap-1.5 text-xs text-slate-400 hover:text-orange-600 transition-colors font-medium">
                         <MessageSquarePlus size={13} /> Adicionar Objeção
@@ -769,6 +787,12 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   <p className="text-sm font-semibold text-emerald-700">✓ Aprovado por {request.approvedBy}</p>
                   <p className="text-xs text-emerald-600">ID de Aprovação: <strong>{request.approvalId}</strong></p>
                   {request.approvedAt && <p className="text-xs text-emerald-500">Em {new Date(request.approvedAt).toLocaleString('pt-BR')}</p>}
+                </div>
+              ) : currentUser.role === 'gestor' && currentUser.name === request.requester ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-red-700">
+                    Você é o solicitante deste pedido — peça a outro gestor para aprovar. Um gestor não pode aprovar a própria solicitação.
+                  </p>
                 </div>
               ) : currentUser.role === 'gestor' ? (
                 <div className="space-y-3">
@@ -850,6 +874,18 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                       !(request.value && request.value > 0) ? 'valor' : null,
                       !isPaymentTermsValid(request.paymentTerms) ? 'condição de pagamento' : null,
                     ].filter(Boolean).join(' e ')}.
+                  </p>
+                </div>
+              ) : totalOpenObjections > 0 ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-orange-700">
+                    Existem <strong>{totalOpenObjections}</strong> objeção(ões) pendente(s) nos itens — corrija-as antes de aprovar o valor.
+                  </p>
+                </div>
+              ) : currentUser.role === 'gestor' && currentUser.name === request.requester ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-red-700">
+                    Você é o solicitante deste pedido — peça a outro gestor para aprovar o valor. Um gestor não pode aprovar a própria compra.
                   </p>
                 </div>
               ) : currentUser.role === 'gestor' ? (
