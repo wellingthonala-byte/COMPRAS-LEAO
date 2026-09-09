@@ -20,6 +20,7 @@ import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
 import { normalizeOsUnit } from '../data/units';
 import { usePurchasingOptions } from '../lib/usePurchasingOptions';
+import { toCSV, toXLS } from '../utils/exportTable';
 import {
   ServiceOrder, OSStatus, OSPriority, MaintenanceType, OS_FLOW, OS_COLUMNS,
   loadServiceOrders, saveServiceOrders, osCost, osIsOverdue,
@@ -66,22 +67,6 @@ const fmtHours = (h: number | null) => {
   if (h < 48) return `${h.toFixed(1).replace('.', ',')}h`;
   return `${(h / 24).toFixed(1).replace('.', ',')}d`;
 };
-
-function download(content: string, filename: string, mime: string) {
-  const blob = new Blob(['﻿' + content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url; a.download = filename; a.click();
-  URL.revokeObjectURL(url);
-}
-function toCSV(headers: string[], rows: (string | number)[][], name: string) {
-  const esc = (v: string | number) => `"${String(v).replace(/"/g, '""')}"`;
-  download([headers.map(esc).join(';'), ...rows.map((r) => r.map(esc).join(';'))].join('\n'), `${name}.csv`, 'text/csv;charset=utf-8');
-}
-function toXLS(headers: string[], rows: (string | number)[][], name: string) {
-  const esc = (v: string | number) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  download(`<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="UTF-8"></head><body><table border="1"><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table></body></html>`, `${name}.xls`, 'application/vnd.ms-excel');
-}
 
 /* ================================================================== */
 /* Página                                                              */

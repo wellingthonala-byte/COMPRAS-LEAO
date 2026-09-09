@@ -1,6 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, X } from 'lucide-react';
+import {
+  ClipboardList, ShieldAlert, ShoppingCart, Truck, XCircle,
+  AlarmClock, DollarSign, Search, FilterX, Kanban, List, Download, FileSpreadsheet,
+  Columns3, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, Eye,
+} from 'lucide-react';
 import { Header } from '../components/Layout/Header';
 import { KanbanColumn } from '../components/Kanban/KanbanColumn';
 import { RequestDetailModal } from '../components/Modals/RequestDetailModal';
@@ -9,11 +13,27 @@ import { PurchaseRequest, Priority, Status, HistoryEntry } from '../types';
 import { ValueApproval } from '../types/finance';
 import { sendNotification } from '../utils/notify';
 import { formatPaymentTerms } from '../lib/paymentTerms';
-import { blocksAdvanceForValueApproval, cancelInstallmentsForInvalidatedApproval, canProjectInstallments, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
+import { blocksAdvanceForValueApproval, cancelInstallmentsForInvalidatedApproval, canProjectInstallments, countsAsPurchase, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
 import { AppUser } from '../data/users';
 import { usePurchasingOptions } from '../lib/usePurchasingOptions';
+import { toCSV, toXLS } from '../utils/exportTable';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
+
+const fmtBRL = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const fmtDate = (s?: string) => (s ? new Date(s.length === 10 ? s + 'T12:00:00' : s).toLocaleDateString('pt-BR') : '—');
+const PRIORITY_BADGE: Record<Priority, string> = {
+  'Máquina Parada': 'bg-red-100 text-red-700 border border-red-200',
+  'Urgente': 'bg-orange-100 text-orange-700 border border-orange-200',
+  'Não Urgente': 'bg-blue-100 text-blue-700 border border-blue-200',
+};
+const STATUS_BADGE: Record<Status, string> = {
+  'Nova Solicitação': 'bg-slate-100 text-slate-700', 'Em Aprovação': 'bg-yellow-100 text-yellow-700',
+  'Em Cotação': 'bg-violet-100 text-violet-700', 'Comprado': 'bg-sky-100 text-sky-700',
+  'Em Rota': 'bg-indigo-100 text-indigo-700', 'Em Serviço': 'bg-purple-100 text-purple-700',
+  'Disponível para Retirada': 'bg-teal-100 text-teal-700', 'Finalizado': 'bg-emerald-100 text-emerald-700',
+  'Cancelada': 'bg-red-100 text-red-700',
+};
 
 interface KanbanPageProps {
   requests: PurchaseRequest[];
@@ -28,6 +48,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | ''>('');
   const [filterSector, setFilterSector] = useState('');
+  const [view, setView] = useState<'kanban' | 'lista'>('kanban');
 
   const selectedRequest = requests.find((r) => r.id === selectedId);
 
@@ -73,6 +94,31 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
       return matchSearch && matchPriority && matchSector;
     });
   }, [requests, search, filterPriority, filterSector]);
+
+  /* ------------- Indicadores resumidos (cabeçalho) — mesmo padrão de O.S. ------------- */
+  const stats = useMemo(() => {
+    const openObjectionsCount = (r: PurchaseRequest) => r.items.reduce((acc, i) => acc + (i.objections || []).filter((o) => !o.resolved).length, 0);
+    const overdue = filtered.filter((r) => r.status !== 'Finalizado' && r.status !== 'Cancelada' && new Date(r.deliveryForecast + 'T23:59:59') < new Date());
+    return [
+      { label: 'Total de Solicitações', value: String(filtered.length), icon: ClipboardList, color: 'text-violet-600', bg: 'bg-violet-50', tip: 'Total de solicitações no filtro atual.' },
+      { label: 'Em Aprovação', value: String(filtered.filter((r) => r.status === 'Em Aprovação').length), icon: ShieldAlert, color: 'text-amber-600', bg: 'bg-amber-50', tip: 'Aguardando aprovação de mérito do gestor.' },
+      { label: 'Em Cotação', value: String(filtered.filter((r) => r.status === 'Em Cotação').length), icon: DollarSign, color: 'text-sky-600', bg: 'bg-sky-50', tip: 'Comprador buscando fornecedor/preço.' },
+      { label: 'Compradas', value: String(filtered.filter((r) => countsAsPurchase(r)).length), icon: ShoppingCart, color: 'text-indigo-600', bg: 'bg-indigo-50', tip: 'Já efetivamente compradas (Comprado em diante).' },
+      { label: 'Objeções Pendentes', value: String(filtered.filter((r) => openObjectionsCount(r) > 0).length), icon: ShieldAlert, color: 'text-orange-600', bg: 'bg-orange-50', tip: 'Solicitações com objeção não resolvida em algum item.' },
+      { label: 'Atrasadas', value: String(overdue.length), icon: AlarmClock, color: 'text-red-600', bg: 'bg-red-50', tip: 'Em aberto com prazo de entrega vencido.' },
+      { label: 'Canceladas', value: String(filtered.filter((r) => r.status === 'Cancelada').length), icon: XCircle, color: 'text-red-600', bg: 'bg-red-50', tip: 'Canceladas com justificativa.' },
+      { label: 'Valor Total', value: fmtBRL(filtered.filter((r) => countsAsPurchase(r)).reduce((s, r) => s + (r.value ?? 0), 0)), icon: Truck, color: 'text-emerald-700', bg: 'bg-emerald-50', tip: 'Soma do valor das solicitações já compradas (não canceladas).' },
+    ];
+  }, [filtered]);
+
+  const exportAll = (kind: 'csv' | 'xls') => {
+    const headers = ['Nº', 'Criado em', 'Solicitante', 'Setor', 'Descrição', 'Prioridade', 'Status', 'Valor', 'Previsão de entrega', 'Aprovado por'];
+    const rows = filtered.map((r) => [
+      r.number, fmtDate(r.createdAt), r.requester, r.sector, r.items[0]?.description ?? '—', r.priority, r.status,
+      r.value !== undefined ? fmtBRL(r.value) : '—', fmtDate(r.deliveryForecast), r.approvedBy ?? '—',
+    ]);
+    (kind === 'csv' ? toCSV : toXLS)(headers, rows, 'solicitacoes-de-compra');
+  };
 
   /** Entrada no histórico com a assinatura padrão do projeto. */
   const entry = (action: string, from?: Status, to?: Status): HistoryEntry => ({
@@ -321,61 +367,108 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   const hasFilters = search || filterPriority || filterSector;
 
   return (
-    <div className="flex flex-col h-screen pl-60">
+    <div className="flex flex-col min-h-screen lg:pl-60 bg-slate-50">
       <Header
         title="Kanban de Compras"
         subtitle="Acompanhe o fluxo de todas as solicitações"
-        searchValue={search}
-        onSearchChange={setSearch}
         requests={requests}
       />
 
-      <div className="flex flex-col overflow-hidden pt-16" style={{ height: '100vh' }}>
-        {/* Filter bar */}
-        <div className="flex-shrink-0 flex items-center gap-3 px-6 py-3 bg-white border-b border-slate-200">
-          <Filter size={14} className="text-slate-400" />
-          <select
-            value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value as Priority | '')}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
-          >
-            <option value="">Todas as Prioridades</option>
-            {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <select
-            value={filterSector}
-            onChange={(e) => setFilterSector(e.target.value)}
-            className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
-          >
-            <option value="">Todos os Setores</option>
-            {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          {hasFilters && (
-            <button
-              onClick={() => { setSearch(''); setFilterPriority(''); setFilterSector(''); }}
-              className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
-            >
-              <X size={13} /> Limpar filtros
-            </button>
-          )}
-          <span className="ml-auto text-xs text-slate-400">
-            {filtered.length} de {requests.length} solicitações
-          </span>
+      <div className="flex-1 pt-16 px-4 md:px-6 py-6 space-y-5">
+
+        {/* Indicadores resumidos */}
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-4">
+          {stats.map(({ label, value, icon: Icon, color, bg, tip }) => (
+            <div key={label} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group relative" tabIndex={0}>
+              <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center mb-2`}>
+                <Icon size={15} className={color} />
+              </div>
+              <p className="text-lg font-bold text-slate-800 truncate">{value}</p>
+              <p className="text-[11px] text-slate-500 leading-tight mt-0.5">{label}</p>
+              <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-2 w-52 bg-slate-800 text-white text-[11px] leading-snug rounded-lg px-3 py-2 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity z-20 shadow-lg">
+                {tip}
+                <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-800" />
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Board */}
-        <div className="flex-1 overflow-auto">
-          <div className="flex gap-4 p-6 min-w-max" style={{ minHeight: '100%' }}>
-            {[...STATUS_ORDER, 'Cancelada'].map((status) => (
-              <KanbanColumn
-                key={status}
-                status={status as Status}
-                requests={filtered.filter((r) => r.status === status)}
-                onCardClick={(id) => setSelectedId(id)}
-              />
-            ))}
+        {/* Barra de filtros — mesmo padrão da tela de Ordens de Serviço */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-sm">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input value={search} onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar por nº, solicitante, item..." aria-label="Buscar solicitação"
+                className="pl-9 pr-3 py-2 text-sm bg-slate-50 border border-slate-200 rounded-lg w-72 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+            </div>
+            <select
+              value={filterPriority}
+              onChange={(e) => setFilterPriority(e.target.value as Priority | '')}
+              aria-label="Prioridade"
+              className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              <option value="">Todas as Prioridades</option>
+              {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <select
+              value={filterSector}
+              onChange={(e) => setFilterSector(e.target.value)}
+              aria-label="Setor"
+              className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              <option value="">Todos os Setores</option>
+              {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {hasFilters && (
+              <button
+                onClick={() => { setSearch(''); setFilterPriority(''); setFilterSector(''); }}
+                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+              >
+                <FilterX size={13} /> Limpar filtros
+              </button>
+            )}
+            <span className="ml-auto text-xs text-slate-400">
+              {filtered.length} de {requests.length} solicitações
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-slate-100">
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden" role="tablist" aria-label="Modo de visualização">
+              <button onClick={() => setView('kanban')} role="tab" aria-selected={view === 'kanban'}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${view === 'kanban' ? 'bg-violet-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+                <Kanban size={13} /> Kanban
+              </button>
+              <button onClick={() => setView('lista')} role="tab" aria-selected={view === 'lista'}
+                className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium transition-colors ${view === 'lista' ? 'bg-violet-600 text-white' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>
+                <List size={13} /> Lista
+              </button>
+            </div>
+            <button onClick={() => exportAll('csv')} className="flex items-center gap-1 text-xs text-slate-500 border border-slate-200 rounded-lg px-2.5 py-2 hover:bg-slate-50 hover:text-violet-700">
+              <Download size={13} /> Exportar CSV
+            </button>
+            <button onClick={() => exportAll('xls')} className="flex items-center gap-1 text-xs text-slate-500 border border-slate-200 rounded-lg px-2.5 py-2 hover:bg-slate-50 hover:text-emerald-700">
+              <FileSpreadsheet size={13} /> Excel
+            </button>
           </div>
         </div>
+
+        {view === 'kanban' ? (
+          <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6">
+            <div className="flex gap-4 min-w-max pb-4">
+              {[...STATUS_ORDER, 'Cancelada'].map((status) => (
+                <KanbanColumn
+                  key={status}
+                  status={status as Status}
+                  requests={filtered.filter((r) => r.status === status)}
+                  onCardClick={(id) => setSelectedId(id)}
+                />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <RequestsTable requests={filtered} onView={setSelectedId} />
+        )}
       </div>
 
       {selectedRequest && (
@@ -391,6 +484,140 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
           onCancel={(id, reason) => { handleCancel(id, reason); setSelectedId(null); }}
         />
       )}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/* Visão em lista — mesmo padrão de tabela usado em Ordens de Serviço  */
+/* ================================================================== */
+function RequestsTable({ requests, onView }: { requests: PurchaseRequest[]; onView: (id: string) => void }) {
+  const [sortKey, setSortKey] = useState<string>('createdAt');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [page, setPage] = useState(1);
+  const [hidden, setHidden] = useState<Set<string>>(new Set(['approvedBy']));
+  const [showCols, setShowCols] = useState(false);
+  const PAGE = 10;
+
+  const columns: { key: string; label: string; value: (r: PurchaseRequest) => string | number; render?: (r: PurchaseRequest) => React.ReactNode; align?: 'right' }[] = [
+    { key: 'number', label: 'Nº', value: (r) => r.number, render: (r) => <span className="font-semibold text-slate-700 whitespace-nowrap">{r.number}</span> },
+    { key: 'createdAt', label: 'Criado em', value: (r) => r.createdAt, render: (r) => fmtDate(r.createdAt) },
+    { key: 'requester', label: 'Solicitante', value: (r) => r.requester },
+    { key: 'sector', label: 'Setor', value: (r) => r.sector },
+    { key: 'description', label: 'Descrição', value: (r) => r.items[0]?.description ?? '—', render: (r) => <span className="line-clamp-1">{r.items[0]?.description ?? '—'}</span> },
+    {
+      key: 'priority', label: 'Prioridade', value: (r) => r.priority,
+      render: (r) => <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${PRIORITY_BADGE[r.priority]}`}>{r.priority}</span>,
+    },
+    {
+      key: 'status', label: 'Status', value: (r) => r.status,
+      render: (r) => <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${STATUS_BADGE[r.status]}`}>{r.status}</span>,
+    },
+    { key: 'value', label: 'Valor', value: (r) => r.value ?? 0, render: (r) => (r.value !== undefined ? fmtBRL(r.value) : '—'), align: 'right' },
+    {
+      key: 'deliveryForecast', label: 'Previsão de entrega', value: (r) => r.deliveryForecast,
+      render: (r) => {
+        const overdue = r.status !== 'Finalizado' && r.status !== 'Cancelada' && new Date(r.deliveryForecast + 'T23:59:59') < new Date();
+        return <span className={overdue ? 'text-red-500 font-semibold' : ''}>{fmtDate(r.deliveryForecast)}</span>;
+      },
+    },
+    { key: 'approvedBy', label: 'Aprovado por', value: (r) => r.approvedBy ?? '—' },
+  ];
+
+  const visible = columns.filter((c) => !hidden.has(c.key));
+
+  const rows = useMemo(() => {
+    const out = [...requests];
+    const col = columns.find((c) => c.key === sortKey);
+    if (col) out.sort((a, b) => {
+      const va = col.value(a), vb = col.value(b);
+      const cmp = typeof va === 'number' && typeof vb === 'number' ? va - vb : String(va).localeCompare(String(vb), 'pt-BR');
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests, sortKey, sortDir]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = rows.slice((safePage - 1) * PAGE, safePage * PAGE);
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-slate-100">
+        <h3 className="font-semibold text-slate-700 text-sm mr-auto">Lista de Solicitações</h3>
+        <div className="relative">
+          <button onClick={() => setShowCols((v) => !v)} className="flex items-center gap-1 text-xs text-slate-500 border border-slate-200 rounded-lg px-2 py-1.5 hover:bg-slate-50">
+            <Columns3 size={13} /> Colunas
+          </button>
+          {showCols && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setShowCols(false)} />
+              <div className="absolute right-0 top-9 bg-white border border-slate-200 rounded-xl shadow-lg z-30 p-2 w-48 max-h-64 overflow-y-auto">
+                {columns.map((c) => (
+                  <label key={c.key} className="flex items-center gap-2 text-xs text-slate-600 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
+                    <input type="checkbox" checked={!hidden.has(c.key)} className="accent-violet-600"
+                      onChange={() => setHidden((prev) => {
+                        const n = new Set(prev);
+                        if (n.has(c.key)) n.delete(c.key); else if (n.size < columns.length - 1) n.add(c.key);
+                        return n;
+                      })} />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto max-h-[65vh] overflow-y-auto">
+        <table className="w-full text-left">
+          <thead className="sticky top-0 z-10">
+            <tr className="bg-slate-50 border-b border-slate-100">
+              {visible.map((c) => (
+                <th key={c.key} scope="col" className={`px-3 py-2.5 text-xs font-semibold text-slate-500 whitespace-nowrap bg-slate-50 ${c.align === 'right' ? 'text-right' : ''}`}>
+                  <button onClick={() => { if (sortKey === c.key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc')); else { setSortKey(c.key); setSortDir('asc'); } }}
+                    className="inline-flex items-center gap-1 hover:text-slate-800">
+                    {c.label}
+                    {sortKey === c.key ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : null}
+                  </button>
+                </th>
+              ))}
+              <th scope="col" className="px-3 py-2.5 text-xs font-semibold text-slate-500 bg-slate-50">Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pageRows.length === 0 ? (
+              <tr><td colSpan={visible.length + 1} className="px-4 py-10 text-center text-xs text-slate-400">Nenhuma solicitação encontrada.</td></tr>
+            ) : pageRows.map((r) => (
+              <tr key={r.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/70 transition-colors cursor-pointer"
+                onClick={() => onView(r.id)}>
+                {visible.map((c) => (
+                  <td key={c.key} className={`px-3 py-2.5 text-xs text-slate-600 ${c.align === 'right' ? 'text-right' : ''}`}>
+                    {c.render ? c.render(r) : c.value(r)}
+                  </td>
+                ))}
+                <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => onView(r.id)} title="Ver detalhes" aria-label={`Ver ${r.number}`}
+                    className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Eye size={13} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex items-center justify-between px-4 py-2.5 border-t border-slate-100 text-xs text-slate-500">
+        <span>{rows.length} solicitações</span>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={safePage <= 1} aria-label="Página anterior"
+            className="p-1 rounded-lg border border-slate-200 disabled:opacity-30 hover:bg-slate-50"><ChevronLeft size={14} /></button>
+          <span>Página {safePage} de {totalPages}</span>
+          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={safePage >= totalPages} aria-label="Próxima página"
+            className="p-1 rounded-lg border border-slate-200 disabled:opacity-30 hover:bg-slate-50"><ChevronRight size={14} /></button>
+        </div>
+      </div>
     </div>
   );
 }
