@@ -78,7 +78,11 @@ export function Sidebar({ currentUser, onLogout }: SidebarProps) {
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-slate-700 truncate">{currentUser.name}</p>
             <div className="flex items-center gap-1 mt-0.5">
-              {currentUser.role === 'gestor' ? (
+              {currentUser.isAdmin ? (
+                <span className="flex items-center gap-1 text-[10px] text-emerald-700 font-semibold">
+                  <ShieldCheck size={10} /> Administrador
+                </span>
+              ) : currentUser.role === 'gestor' ? (
                 <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-medium">
                   <ShieldCheck size={10} /> Gestor
                 </span>

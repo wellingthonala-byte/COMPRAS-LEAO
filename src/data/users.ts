@@ -28,6 +28,12 @@ export interface AppUser {
    * carregamento vindo do banco. 'supabase': sessão real, tudo sincroniza.
    */
   authSource?: 'local' | 'supabase';
+  /**
+   * true quando o papel real no banco é 'admin' (não existe um Role de UI
+   * separado para isso — admin é tratado como gestor com acesso total às
+   * permissões). Usado só para exibir o rótulo certo na tela.
+   */
+  isAdmin?: boolean;
 }
 
 const USERS_KEY = 'compras-leao-users';

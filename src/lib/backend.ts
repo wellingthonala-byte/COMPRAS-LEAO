@@ -518,6 +518,7 @@ export async function loginWithSupabase(email: string, password: string): Promis
     active: true,
     lastLogin: new Date().toISOString(),
     authSource: 'supabase',
+    isAdmin: dbRoles.includes('admin'),
   };
 }
 
@@ -553,7 +554,7 @@ export async function revalidateSession(current: AppUser): Promise<RevalidateRes
     const role = roleFromDbRoles(dbRoles);
     return {
       status: 'ok',
-      user: { ...current, name, role, initials: name.trim().slice(0, 2).toUpperCase() },
+      user: { ...current, name, role, initials: name.trim().slice(0, 2).toUpperCase(), isAdmin: dbRoles.includes('admin') },
     };
   } catch {
     return { status: 'unknown' };
