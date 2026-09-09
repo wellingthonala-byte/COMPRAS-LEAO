@@ -16,6 +16,7 @@ import { formatPaymentTerms } from '../lib/paymentTerms';
 import { blocksAdvanceForValueApproval, cancelInstallmentsForInvalidatedApproval, canProjectInstallments, countsAsPurchase, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
 import { AppUser } from '../data/users';
 import { usePurchasingOptions } from '../lib/usePurchasingOptions';
+import { useApprovalSettings } from '../lib/useApprovalSettings';
 import { toCSV, toXLS } from '../utils/exportTable';
 
 const priorities: Priority[] = ['Máquina Parada', 'Urgente', 'Não Urgente'];
@@ -43,6 +44,10 @@ interface KanbanPageProps {
 
 export function KanbanPage({ requests, setRequests, currentUser }: KanbanPageProps) {
   const { centrosCusto: sectors } = usePurchasingOptions();
+  const { aprovacaoObrigatoria } = useApprovalSettings();
+  // Mesma regra do RequestDetailModal: com a aprovação obrigatória
+  // desligada, o comprador também pode confirmar mérito e valor.
+  const canActOnApproval = currentUser.role === 'gestor' || (!aprovacaoObrigatoria && currentUser.role === 'comprador');
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -285,7 +290,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
    * quando ainda não existe valor nem condição de pagamento.
    */
   const handleApproveValue = (id: string) => {
-    if (currentUser.role !== 'gestor') return;
+    if (!canActOnApproval) return;
     const req = requests.find((r) => r.id === id);
     if (!req || req.valueApproval || !canProjectInstallments(req)) return;
     // Defesa em profundidade — a UI já esconde o botão nesses dois casos,
@@ -326,7 +331,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   };
 
   const handleApprove = (id: string, approverName: string, approvalId: string) => {
-    if (currentUser.role !== 'gestor') return;
+    if (!canActOnApproval) return;
     const req = requests.find((r) => r.id === id);
     // Idempotência (duplo clique não regrava) + segregação de funções (o
     // gestor não aprova a própria solicitação) — checado aqui, não só na UI.

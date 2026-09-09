@@ -14,6 +14,7 @@ import { PriorityBadge, StatusBadge } from '../UI/Badge';
 import { Avatar } from '../UI/Avatar';
 import { STATUS_ORDER, computeSkipTarget } from '../../data/mockData';
 import { UNITS, DEFAULT_UNIT } from '../../data/units';
+import { useApprovalSettings } from '../../lib/useApprovalSettings';
 
 interface RequestDetailModalProps {
   request: PurchaseRequest;
@@ -42,6 +43,13 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
 };
 
 export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onSkipStatus, onApprove, onApproveValue, onEdit, onCancel }: RequestDetailModalProps) {
+  const { aprovacaoObrigatoria } = useApprovalSettings();
+  // Com a aprovação obrigatória desligada (Configurações › Fluxo de
+  // Aprovação), o próprio comprador pode confirmar mérito e valor — o
+  // registro de quem aprovou continua existindo, só deixa de exigir que
+  // seja um gestor. Autoaprovação do próprio solicitante continua vedada
+  // (controle de fraude, não segregação de papéis).
+  const canActOnApproval = currentUser.role === 'gestor' || (!aprovacaoObrigatoria && currentUser.role === 'comprador');
   const currentIdx = STATUS_ORDER.indexOf(request.status);
   const isApprovalStep = request.status === 'Em Aprovação';
   const isApproved = !!request.approvedBy;
@@ -788,17 +796,21 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                   <p className="text-xs text-emerald-600">ID de Aprovação: <strong>{request.approvalId}</strong></p>
                   {request.approvedAt && <p className="text-xs text-emerald-500">Em {new Date(request.approvedAt).toLocaleString('pt-BR')}</p>}
                 </div>
-              ) : currentUser.role === 'gestor' && currentUser.name === request.requester ? (
+              ) : canActOnApproval && currentUser.name === request.requester ? (
                 <div className="space-y-1">
                   <p className="text-xs text-red-700">
-                    Você é o solicitante deste pedido — peça a outro gestor para aprovar. Um gestor não pode aprovar a própria solicitação.
+                    Você é o solicitante deste pedido — peça a outra pessoa para aprovar. Quem solicita não pode aprovar a própria solicitação.
                   </p>
                 </div>
-              ) : currentUser.role === 'gestor' ? (
+              ) : canActOnApproval ? (
                 <div className="space-y-3">
-                  <p className="text-xs text-yellow-700">Você está logado como gestor. Confirme a aprovação desta solicitação.</p>
+                  <p className="text-xs text-yellow-700">
+                    {aprovacaoObrigatoria
+                      ? 'Você está logado como gestor. Confirme a aprovação desta solicitação.'
+                      : 'Aprovação obrigatória está desligada — confirme para registrar a aprovação e liberar a cotação.'}
+                  </p>
                   <div className="bg-white border border-yellow-200 rounded-lg px-3 py-2">
-                    <p className="text-xs text-slate-500">Gestor</p>
+                    <p className="text-xs text-slate-500">{currentUser.role === 'gestor' ? 'Gestor' : 'Comprador'}</p>
                     <p className="text-sm font-semibold text-slate-800">{currentUser.name}</p>
                   </div>
                   {approvalError && <p className="text-xs text-red-600">{approvalError}</p>}
@@ -882,16 +894,18 @@ export function RequestDetailModal({ request, currentUser, onClose, onAdvanceSta
                     Existem <strong>{totalOpenObjections}</strong> objeção(ões) pendente(s) nos itens — corrija-as antes de aprovar o valor.
                   </p>
                 </div>
-              ) : currentUser.role === 'gestor' && currentUser.name === request.requester ? (
+              ) : canActOnApproval && currentUser.name === request.requester ? (
                 <div className="space-y-1">
                   <p className="text-xs text-red-700">
-                    Você é o solicitante deste pedido — peça a outro gestor para aprovar o valor. Um gestor não pode aprovar a própria compra.
+                    Você é o solicitante deste pedido — peça a outra pessoa para aprovar o valor. Quem solicita não pode aprovar a própria compra.
                   </p>
                 </div>
-              ) : currentUser.role === 'gestor' ? (
+              ) : canActOnApproval ? (
                 <div className="space-y-3">
                   <p className="text-xs text-yellow-700">
-                    Ao aprovar, o valor entra na projeção financeira como compromisso dos próximos meses.
+                    {aprovacaoObrigatoria
+                      ? 'Ao aprovar, o valor entra na projeção financeira como compromisso dos próximos meses.'
+                      : 'Aprovação obrigatória está desligada — ao confirmar, o valor entra na projeção financeira como compromisso dos próximos meses.'}
                   </p>
                   <div className="bg-white border border-yellow-200 rounded-lg px-3 py-2 space-y-2">
                     <div className="flex items-center justify-between">
