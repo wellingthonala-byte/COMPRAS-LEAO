@@ -248,6 +248,14 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     const before = requests.find((r) => r.id === id);
     if (!before) return;
 
+    // Defesa em profundidade: a UI já esconde o botão "Editar" da cotação
+    // pra pedido Cancelado/Finalizado, mas o handler não pode confiar só
+    // nisso — reabrir um pedido já encerrado pra mexer em valor/fornecedor
+    // reinvalidava aprovação e cancelava parcelas de uma compra que já
+    // deveria ser imutável.
+    const cotacaoFields: (keyof PurchaseRequest)[] = ['supplier', 'value', 'orderNumber', 'fiscalNote', 'fiscalNoteDate', 'paymentTerms'];
+    if ((before.status === 'Cancelada' || before.status === 'Finalizado') && cotacaoFields.some((k) => k in fields)) return;
+
     // Valor e condição de pagamento são exatamente o que o gestor aprovou —
     // alterá-los depois da aprovação sem invalidá-la deixava o comprador criar
     // (ou inflar) o compromisso financeiro sem nenhum novo aprovador olhar pra

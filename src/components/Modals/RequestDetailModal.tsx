@@ -225,7 +225,16 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
     setItemDraft({});
   };
 
+  // Só quem pode corrigir o item (comprador ou o próprio dono do pedido —
+  // mesma regra do botão "Editar e Corrigir este Item") pode destravar a
+  // objeção. Sem isso, qualquer usuário logado que abrisse o pedido pelo
+  // Kanban (nada filtra por dono) conseguia resolver a objeção ou reenviar
+  // a solicitação com um clique, sem editar nada de verdade no item — o
+  // mecanismo de objeção inteiro não resistia a isso.
+  const canActOnObjection = currentUser.role === 'comprador' || currentUser.name === request.requester;
+
   const handleResubmit = () => {
+    if (!canActOnObjection) return;
     sendNotification({
       title: `✅ ${request.number} — Solicitação corrigida`,
       message: `${request.requester} corrigiu os itens e reenviou a solicitação ${request.number}.`,
@@ -253,6 +262,7 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
   };
 
   const handleResolveObjection = (itemId: string, objId: string) => {
+    if (!canActOnObjection) return;
     const updatedItems = request.items.map((item) => {
       if (item.id !== itemId) return item;
       return {
@@ -451,7 +461,7 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                       <Save size={11} /> Salvar
                     </button>
                   </div>
-                ) : currentUser.role === 'comprador' ? (
+                ) : currentUser.role === 'comprador' && !isCancelled && !isFinalized ? (
                   <button onClick={() => setEditingSupplier(true)} className="text-xs text-violet-600 hover:text-violet-800 font-medium flex items-center gap-1 transition-colors">
                     <Edit3 size={11} /> Editar
                   </button>
@@ -710,10 +720,12 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                                 <p className="text-xs text-orange-800 mt-0.5">{obj.text}</p>
                                 <p className="text-[10px] text-orange-400 mt-0.5">{new Date(obj.date).toLocaleString('pt-BR')}</p>
                               </div>
-                              <button onClick={() => handleResolveObjection(item.id, obj.id)}
-                                className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 flex-shrink-0 mt-0.5">
-                                <CheckCheck size={12} /> Resolver
-                              </button>
+                              {canActOnObjection && (
+                                <button onClick={() => handleResolveObjection(item.id, obj.id)}
+                                  className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 flex-shrink-0 mt-0.5">
+                                  <CheckCheck size={12} /> Resolver
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -782,10 +794,12 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                     Existem <strong>{totalOpenObjections}</strong> objeção(ões) pendente(s). O solicitante deve editar e corrigir os itens acima e depois reenviar a solicitação.
                     O avanço de status está bloqueado até que todas as objeções sejam resolvidas.
                   </p>
-                  <button onClick={handleResubmit}
-                    className="mt-3 flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
-                    <RotateCcw size={14} /> Reenviar Solicitação Corrigida
-                  </button>
+                  {canActOnObjection && (
+                    <button onClick={handleResubmit}
+                      className="mt-3 flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors">
+                      <RotateCcw size={14} /> Reenviar Solicitação Corrigida
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

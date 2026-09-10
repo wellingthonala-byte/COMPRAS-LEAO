@@ -53,6 +53,10 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
   const requester = currentUser.name;
   const [sector, setSector] = useState('');
   const [priority, setPriority] = useState<Priority>('Não Urgente');
+  // Sem campo nenhum pra isso, toda solicitação nascia com previsão de
+  // entrega = data de criação — virava "Atrasada" (alerta + notificação)
+  // já na primeira madrugada, mesmo recém-aberta.
+  const [deliveryForecast, setDeliveryForecast] = useState('');
   const [observations, setObservations] = useState('');
   const [objectLink, setObjectLink] = useState('');
   const [items, setItems] = useState<ItemForm[]>([newItem()]);
@@ -72,6 +76,16 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
 
     if (items.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0)) {
       setFormError('Todos os itens devem ter uma quantidade válida maior que zero.');
+      return;
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (!deliveryForecast) {
+      setFormError('Informe a previsão de entrega.');
+      return;
+    }
+    if (deliveryForecast < todayStr) {
+      setFormError('A previsão de entrega não pode ser no passado.');
       return;
     }
 
@@ -101,7 +115,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
       priority,
       status: 'Nova Solicitação',
       createdAt: now,
-      deliveryForecast: now.slice(0, 10),
+      deliveryForecast,
       items: items.map((item, idx) => ({
         id: `item-${Date.now()}-${idx}`,
         description: item.description,
@@ -109,7 +123,7 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
         unit: item.unit || DEFAULT_UNIT,
         application: item.application,
         priority: item.priority,
-        deliveryForecast: item.deliveryForecast || now.slice(0, 10),
+        deliveryForecast: item.deliveryForecast || deliveryForecast,
         technicalSpec: item.technicalSpec || undefined,
         observations: item.observations || undefined,
         link: normalizeUrl(item.link) ?? undefined,
@@ -182,6 +196,12 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700">
                   {priorities.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Previsão de Entrega <span className="text-red-500">*</span></label>
+                <input type="date" required min={new Date().toISOString().slice(0, 10)} value={deliveryForecast}
+                  onChange={(e) => setDeliveryForecast(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white text-slate-700" />
               </div>
               <div className="col-span-2">
                 <ObjectLinkInput value={objectLink} onChange={setObjectLink} />

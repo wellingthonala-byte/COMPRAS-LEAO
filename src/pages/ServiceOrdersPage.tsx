@@ -1212,8 +1212,8 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
                     <span className="text-slate-400">Link do Objeto</span>
                     <ObjectLinkView
                       url={os.objectLink}
-                      onSave={(url) => onUpdate((o) => addEvent({ ...o, objectLink: url },
-                        url ? `Link do objeto ${o.objectLink ? 'alterado' : 'adicionado'}: ${url}` : 'Link do objeto removido'))}
+                      onSave={canEdit ? (url) => onUpdate((o) => addEvent({ ...o, objectLink: url },
+                        url ? `Link do objeto ${o.objectLink ? 'alterado' : 'adicionado'}: ${url}` : 'Link do objeto removido')) : undefined}
                     />
                   </div>
                   {os.description && <p className="text-xs text-slate-500 mt-3 pt-3 border-t border-slate-100">{os.description}</p>}
