@@ -199,9 +199,13 @@ function Toggle({ label, checked, onChange, hint }: { label: string; checked: bo
 
 function TagEditor({ label, tags, onChange, placeholder }: { label: string; tags: string[]; onChange: (t: string[]) => void; placeholder?: string }) {
   const [draft, setDraft] = useState('');
+  // Compara ignorando maiúsculas/minúsculas e espaços duplicados — "TI" e
+  // "ti"/"T I" viravam itens diferentes na mesma lista, gerando quase-
+  // duplicatas que confundiam os formulários que consomem essa lista.
+  const normalize = (s: string) => s.trim().replace(/\s+/g, ' ').toLowerCase();
   const add = () => {
-    const v = draft.trim();
-    if (v && !tags.includes(v)) onChange([...tags, v]);
+    const v = draft.trim().replace(/\s+/g, ' ');
+    if (v && !tags.some((t) => normalize(t) === normalize(v))) onChange([...tags, v]);
     setDraft('');
   };
   return (
@@ -627,7 +631,7 @@ function GeneralSection({ settings, patch, showToast }: { settings: AppSettings;
   const handleUpload = async (file: File) => {
     setUploading(true);
     try {
-      const url = await uploadLogo(file);
+      const url = await uploadLogo(file, c.logoUrl || undefined);
       patch('company', { logoUrl: url });
       showToast('Logo enviada com sucesso');
     } catch (e) {

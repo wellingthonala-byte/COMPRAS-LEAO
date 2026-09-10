@@ -195,7 +195,11 @@ export default function App() {
       if (cancelled) return;
       if (result.status === 'invalid') {
         setCurrentUser(null);
-      } else if (result.status === 'ok' && (result.user.role !== currentUser.role || result.user.name !== currentUser.name)) {
+      } else if (result.status === 'ok' && (
+        result.user.role !== currentUser.role ||
+        result.user.name !== currentUser.name ||
+        !!result.user.isAdmin !== !!currentUser.isAdmin
+      )) {
         setCurrentUser(result.user);
       }
     });

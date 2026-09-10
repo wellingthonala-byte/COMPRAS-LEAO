@@ -61,7 +61,7 @@ export async function saveRolePermission(role: string, module: string, allowed: 
 const LOGO_MAX_BYTES = 2 * 1024 * 1024; // 2 MB
 const LOGO_ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/webp'];
 
-export async function uploadLogo(file: File): Promise<string> {
+export async function uploadLogo(file: File, previousUrl?: string): Promise<string> {
   if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
     throw new Error('Formato não suportado — envie PNG, JPG, SVG ou WEBP.');
   }
@@ -76,6 +76,20 @@ export async function uploadLogo(file: File): Promise<string> {
   );
   if (error) throw error;
   const { data } = sb.storage.from('branding').getPublicUrl(path);
+  // Cada upload usa um nome novo (timestamp) e nunca sobrescreve o anterior
+  // — sem isso, o bucket acumula um arquivo órfão a cada troca de logo, pra
+  // sempre. Best-effort: se a remoção falhar (ex.: URL de fora do bucket),
+  // não impede a troca de logo, que já está concluída.
+  if (previousUrl) {
+    const marker = '/object/public/branding/';
+    const idx = previousUrl.indexOf(marker);
+    if (idx !== -1) {
+      const previousPath = previousUrl.slice(idx + marker.length);
+      if (previousPath && previousPath !== path) {
+        sb.storage.from('branding').remove([previousPath]).catch(() => {});
+      }
+    }
+  }
   return data.publicUrl;
 }
 

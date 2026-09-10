@@ -45,6 +45,14 @@ interface KanbanPageProps {
 export function KanbanPage({ requests, setRequests, currentUser }: KanbanPageProps) {
   const { centrosCusto: sectors } = usePurchasingOptions();
   const { aprovacaoObrigatoria } = useApprovalSettings();
+  // O filtro precisa continuar oferecendo um setor mesmo depois de ele ser
+  // renomeado/removido em Configurações — senão fica impossível filtrar
+  // pedidos antigos daquele setor (Dashboard/Relatórios já faziam certo,
+  // derivando a lista dos dados reais; Kanban só usava a lista configurada).
+  const filterSectorOptions = useMemo(
+    () => [...new Set([...sectors, ...requests.map((r) => r.sector)])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [sectors, requests]
+  );
   // Mesma regra do RequestDetailModal: com a aprovação obrigatória
   // desligada, o comprador também pode confirmar mérito e valor.
   const canActOnApproval = currentUser.role === 'gestor' || (!aprovacaoObrigatoria && currentUser.role === 'comprador');
@@ -432,7 +440,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
               className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
             >
               <option value="">Todos os Setores</option>
-              {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
+              {filterSectorOptions.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
             {hasFilters && (
               <button

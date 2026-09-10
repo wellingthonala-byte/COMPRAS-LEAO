@@ -97,6 +97,8 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
   const canCancel = !isCancelled && !isFinalized && !purchasedOrLater && currentUser.role === 'comprador';
 
   const [approvalError, setApprovalError] = useState('');
+  const [respondingObjId, setRespondingObjId] = useState<string | null>(null);
+  const [objResponseDraft, setObjResponseDraft] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -261,16 +263,23 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
     });
   };
 
-  const handleResolveObjection = (itemId: string, objId: string) => {
+  const handleResolveObjection = (itemId: string, objId: string, response?: string) => {
     if (!canActOnObjection) return;
+    const trimmedResponse = response?.trim();
     const updatedItems = request.items.map((item) => {
       if (item.id !== itemId) return item;
       return {
         ...item,
-        objections: (item.objections || []).map((o) => o.id === objId ? { ...o, resolved: true } : o),
+        objections: (item.objections || []).map((o) => o.id === objId ? {
+          ...o,
+          resolved: true,
+          ...(trimmedResponse ? { response: trimmedResponse, respondedBy: currentUser.name, respondedAt: new Date().toISOString() } : {}),
+        } : o),
       };
     });
     onEdit(request.id, { items: updatedItems });
+    setRespondingObjId(null);
+    setObjResponseDraft('');
   };
 
   const handleSaveSupplier = () => {
@@ -720,13 +729,30 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                                 <p className="text-xs text-orange-800 mt-0.5">{obj.text}</p>
                                 <p className="text-[10px] text-orange-400 mt-0.5">{new Date(obj.date).toLocaleString('pt-BR')}</p>
                               </div>
-                              {canActOnObjection && (
-                                <button onClick={() => handleResolveObjection(item.id, obj.id)}
-                                  className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1 flex-shrink-0 mt-0.5">
-                                  <CheckCheck size={12} /> Resolver
-                                </button>
+                              {canActOnObjection && respondingObjId !== obj.id && (
+                                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                  <button onClick={() => { setRespondingObjId(obj.id); setObjResponseDraft(''); }}
+                                    className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1">
+                                    <CheckCheck size={12} /> Resolver
+                                  </button>
+                                </div>
                               )}
                             </div>
+                            {canActOnObjection && respondingObjId === obj.id && (
+                              <div className="pl-5 space-y-1.5">
+                                <textarea value={objResponseDraft} onChange={(e) => setObjResponseDraft(e.target.value)}
+                                  rows={2} placeholder="O que foi corrigido? (opcional)"
+                                  className="w-full border border-orange-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white resize-none" />
+                                <div className="flex items-center gap-2">
+                                  <button onClick={() => handleResolveObjection(item.id, obj.id, objResponseDraft)}
+                                    className="text-xs text-emerald-600 hover:text-emerald-800 font-medium flex items-center gap-1">
+                                    <CheckCheck size={12} /> Confirmar resolução
+                                  </button>
+                                  <button onClick={() => { setRespondingObjId(null); setObjResponseDraft(''); }}
+                                    className="text-xs text-slate-400 hover:text-slate-600">Cancelar</button>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         ))}
                         {resolvedObjections.map((obj) => (
@@ -734,6 +760,11 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                             <CheckCheck size={13} className="text-emerald-500 flex-shrink-0 mt-0.5" />
                             <div className="flex-1 min-w-0">
                               <p className="text-xs text-slate-500 line-through">{obj.text}</p>
+                              {obj.response && (
+                                <p className="text-[11px] text-emerald-700 mt-0.5 no-underline">
+                                  Resposta de {obj.respondedBy}: {obj.response}
+                                </p>
+                              )}
                             </div>
                             <span className="text-[10px] text-emerald-600 font-medium flex-shrink-0">Resolvido</span>
                           </div>
@@ -810,7 +841,7 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
             <div className={`rounded-xl p-4 border ${isApproved ? 'bg-emerald-50 border-emerald-200' : 'bg-yellow-50 border-yellow-200'}`}>
               <div className="flex items-center gap-2 mb-3">
                 {isApproved ? <ShieldCheck size={16} className="text-emerald-600" /> : <ShieldAlert size={16} className="text-yellow-600" />}
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">Aprovação do Gestor</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-600">{aprovacaoObrigatoria ? 'Aprovação do Gestor' : 'Aprovação de Mérito'}</h3>
               </div>
               {isApproved ? (
                 <div className="space-y-1">
@@ -852,8 +883,14 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-xs text-yellow-700">Esta solicitação aguarda aprovação de um gestor.</p>
-                  <p className="text-xs text-slate-500">Apenas usuários com perfil de <strong>Gestor</strong> podem aprovar.</p>
+                  <p className="text-xs text-yellow-700">
+                    {aprovacaoObrigatoria ? 'Esta solicitação aguarda aprovação de um gestor.' : 'Esta solicitação aguarda a confirmação do comprador responsável.'}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {aprovacaoObrigatoria
+                      ? <>Apenas usuários com perfil de <strong>Gestor</strong> podem aprovar.</>
+                      : 'Aprovação obrigatória está desligada — o próprio comprador confirma.'}
+                  </p>
                 </div>
               )}
             </div>
@@ -969,7 +1006,9 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                     Cotação pronta: {fmtValue(request.value)} em {formatPaymentTerms(request.paymentTerms)}.
                   </p>
                   <p className="text-xs text-slate-500">
-                    Aguardando o <strong>Gestor</strong> aprovar o valor para gerar as parcelas previstas.
+                    {aprovacaoObrigatoria
+                      ? <>Aguardando o <strong>Gestor</strong> aprovar o valor para gerar as parcelas previstas.</>
+                      : 'Aguardando o comprador confirmar a aprovação de valor para gerar as parcelas previstas.'}
                   </p>
                 </div>
               )}
@@ -1086,13 +1125,13 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
             ) : canAdvance && isApprovalStep && !isApproved ? (
               <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
                 <ShieldAlert size={15} />
-                Aguardando aprovação do gestor
+                {aprovacaoObrigatoria ? 'Aguardando aprovação do gestor' : 'Aguardando confirmação de aprovação'}
               </span>
             ) : canAdvance && valueApprovalBlocksAdvance ? (
               <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
                 <ShieldAlert size={15} />
                 {canProject
-                  ? 'Aguardando aprovação de valor do gestor'
+                  ? (aprovacaoObrigatoria ? 'Aguardando aprovação de valor do gestor' : 'Aguardando confirmação de aprovação de valor')
                   : 'Preencha valor e condição de pagamento antes de avançar'}
               </span>
             ) : canAdvance && (!isApprovalStep || isApproved) && !valueApprovalBlocksAdvance && currentUser.role === 'comprador' ? (

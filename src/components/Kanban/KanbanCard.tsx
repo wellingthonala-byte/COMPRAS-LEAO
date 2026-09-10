@@ -3,6 +3,7 @@ import { PurchaseRequest } from '../../types';
 import { Avatar } from '../UI/Avatar';
 import { PriorityBadge } from '../UI/Badge';
 import { colorFromInitials } from '../../utils/colors';
+import { useApprovalSettings } from '../../lib/useApprovalSettings';
 
 interface KanbanCardProps {
   request: PurchaseRequest;
@@ -16,6 +17,7 @@ const priorityBorderColor: Record<string, string> = {
 };
 
 export function KanbanCard({ request, onClick }: KanbanCardProps) {
+  const { aprovacaoObrigatoria } = useApprovalSettings();
   const isCancelled = request.status === 'Cancelada';
   const borderColor = isCancelled ? 'border-l-slate-300' : priorityBorderColor[request.priority];
   const hasForecast = !!request.deliveryForecast;
@@ -78,7 +80,7 @@ export function KanbanCard({ request, onClick }: KanbanCardProps) {
 
       {isAwaitingApproval && !isCancelled && (
         <div className="mb-2 px-2 py-1 bg-yellow-50 border border-yellow-200 rounded-lg">
-          <p className="text-xs text-yellow-700 font-medium">⏳ Aguardando aprovação do gestor</p>
+          <p className="text-xs text-yellow-700 font-medium">⏳ {aprovacaoObrigatoria ? 'Aguardando aprovação do gestor' : 'Aguardando confirmação de aprovação'}</p>
         </div>
       )}
 

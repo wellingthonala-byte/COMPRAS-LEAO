@@ -873,7 +873,7 @@ function NewOSModal({ currentUser, base, editing = false, onClose, onCreate, onS
   const submit = () => {
     if (!valid) return;
     const parsedSlaHours = Number.isFinite(Number(f.slaHours)) && Number(f.slaHours) > 0 ? Number(f.slaHours) : 48;
-    const parsedEstimatedValue = f.estimatedValue.trim() !== '' && Number.isFinite(Number(f.estimatedValue)) ? Number(f.estimatedValue) : undefined;
+    const parsedEstimatedValue = f.estimatedValue.trim() !== '' && Number.isFinite(Number(f.estimatedValue)) && Number(f.estimatedValue) >= 0 ? Number(f.estimatedValue) : undefined;
     if (editing && base && onSaveEdit) {
       onSaveEdit({
         ...base,

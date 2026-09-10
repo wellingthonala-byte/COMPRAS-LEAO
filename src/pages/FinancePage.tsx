@@ -67,7 +67,14 @@ function Kpi({ icon: Icon, label, value, note, tone }: {
 
 export function FinancePage({ requests, setRequests, currentUser }: FinancePageProps) {
   const navigate = useNavigate();
-  const { centrosCusto: SECTORS } = usePurchasingOptions();
+  const { centrosCusto: SECTORS_CONFIG } = usePurchasingOptions();
+  // Igual ao Dashboard/Relatórios: o filtro precisa continuar oferecendo um
+  // setor mesmo depois de renomeado/removido em Configurações, senão fica
+  // impossível filtrar compromissos financeiros antigos daquele setor.
+  const SECTORS = useMemo(
+    () => [...new Set([...SECTORS_CONFIG, ...requests.map((r) => r.sector)])].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [SECTORS_CONFIG, requests]
+  );
   const installments = useInstallments();
   const [filters, setFilters] = useState<FinanceFilters>(EMPTY_FILTERS);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
