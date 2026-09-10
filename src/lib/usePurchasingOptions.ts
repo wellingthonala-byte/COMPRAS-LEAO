@@ -25,9 +25,9 @@ function readCache(): PurchasingOptions {
     if (raw) {
       const p = JSON.parse(raw)?.purchasing ?? {};
       return {
-        categorias: Array.isArray(p.categorias) && p.categorias.length > 0 ? p.categorias : FALLBACK.categorias,
-        centrosCusto: Array.isArray(p.centrosCusto) && p.centrosCusto.length > 0 ? p.centrosCusto : FALLBACK.centrosCusto,
-        tiposSolicitacao: Array.isArray(p.tiposSolicitacao) && p.tiposSolicitacao.length > 0 ? p.tiposSolicitacao : FALLBACK.tiposSolicitacao,
+        categorias: Array.isArray(p.categorias) ? p.categorias : FALLBACK.categorias,
+        centrosCusto: Array.isArray(p.centrosCusto) ? p.centrosCusto : FALLBACK.centrosCusto,
+        tiposSolicitacao: Array.isArray(p.tiposSolicitacao) ? p.tiposSolicitacao : FALLBACK.tiposSolicitacao,
         clientesOS: Array.isArray(p.clientesOS) ? p.clientesOS : FALLBACK.clientesOS,
       };
     }
@@ -54,10 +54,10 @@ export function usePurchasingOptions(): PurchasingOptions {
         if (cancelled || !remote) return;
         const p = (remote as { purchasing?: Partial<PurchasingOptions> }).purchasing ?? {};
         setOptions({
-          categorias: p.categorias && p.categorias.length > 0 ? p.categorias : FALLBACK.categorias,
-          centrosCusto: p.centrosCusto && p.centrosCusto.length > 0 ? p.centrosCusto : FALLBACK.centrosCusto,
-          tiposSolicitacao: p.tiposSolicitacao && p.tiposSolicitacao.length > 0 ? p.tiposSolicitacao : FALLBACK.tiposSolicitacao,
-          clientesOS: p.clientesOS ?? FALLBACK.clientesOS,
+          categorias: Array.isArray(p.categorias) ? p.categorias : FALLBACK.categorias,
+          centrosCusto: Array.isArray(p.centrosCusto) ? p.centrosCusto : FALLBACK.centrosCusto,
+          tiposSolicitacao: Array.isArray(p.tiposSolicitacao) ? p.tiposSolicitacao : FALLBACK.tiposSolicitacao,
+          clientesOS: Array.isArray(p.clientesOS) ? p.clientesOS : FALLBACK.clientesOS,
         });
       })
       .catch(() => { /* offline/sem sessão: mantém o que já está pintado */ });

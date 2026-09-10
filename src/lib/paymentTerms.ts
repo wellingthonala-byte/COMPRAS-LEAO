@@ -93,3 +93,22 @@ export function findPresetId(terms: PaymentTerms | undefined): string | null {
 export function isPaymentTermsValid(terms: PaymentTerms | undefined): terms is PaymentTerms {
   return !!terms && Array.isArray(terms.days) && normalizeDays(terms.days).length > 0;
 }
+
+/**
+ * Compara por CONTEÚDO, não por referência. O seletor de condição de
+ * pagamento sempre cria um objeto novo — até ao reselecionar o mesmo preset
+ * — então `a !== b` dá falso positivo de "mudou" mesmo sem alteração real,
+ * o que já chegou a invalidar (e cancelar parcelas de) uma aprovação de
+ * valor sem que a condição tivesse de fato mudado.
+ */
+export function paymentTermsEqual(a: PaymentTerms | undefined, b: PaymentTerms | undefined): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.kind === b.kind &&
+    normalizeDays(a.days).join(',') === normalizeDays(b.days).join(',') &&
+    (a.count ?? null) === (b.count ?? null) &&
+    (a.intervalDays ?? null) === (b.intervalDays ?? null) &&
+    !!a.hasEntry === !!b.hasEntry
+  );
+}

@@ -257,7 +257,9 @@ export function DashboardPage({ requests, currentUser }: DashboardPageProps) {
     const lateOS = orders.filter(osIsOverdue).length;
     const waiting = requests.filter((r) => r.status === 'Em Aprovação' || r.status === 'Nova Solicitação').length;
     const urgent = requests.filter((r) => isActive(r) && r.priority !== 'Não Urgente').length;
-    const boughtToday = requests.filter((r) => r.history.some((h) => localDayOf(h.date) === today && h.to === 'Comprado')).reduce((s, r) => s + (r.value ?? 0), 0);
+    const boughtToday = requests
+      .filter((r) => countsAsPurchase(r) && r.history.some((h) => localDayOf(h.date) === today && h.to === 'Comprado'))
+      .reduce((s, r) => s + (r.value ?? 0), 0);
     return [
       { label: 'Abertas hoje', value: String(openToday), icon: Plus, cls: 'text-violet-600 bg-violet-50', to: '/' },
       { label: 'Finalizadas hoje', value: String(doneToday), icon: CheckCircle2, cls: 'text-emerald-600 bg-emerald-50', to: '/' },

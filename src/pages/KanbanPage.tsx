@@ -12,7 +12,7 @@ import { STATUS_ORDER, computeSkipTarget } from '../data/mockData';
 import { PurchaseRequest, Priority, Status, HistoryEntry } from '../types';
 import { ValueApproval } from '../types/finance';
 import { sendNotification } from '../utils/notify';
-import { formatPaymentTerms } from '../lib/paymentTerms';
+import { formatPaymentTerms, paymentTermsEqual } from '../lib/paymentTerms';
 import { blocksAdvanceForValueApproval, cancelInstallmentsForInvalidatedApproval, canProjectInstallments, countsAsPurchase, isPurchasedOrLater, syncRequestFinance } from '../lib/financeSync';
 import { AppUser } from '../data/users';
 import { usePurchasingOptions } from '../lib/usePurchasingOptions';
@@ -254,8 +254,9 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     // isso: as parcelas eram só reprojetadas silenciosamente para o valor novo.
     // fiscalNoteDate fica de fora dessa trava — só desloca a data-base do
     // parcelamento já aprovado, não o valor nem a condição.
-    const approvalFields: (keyof PurchaseRequest)[] = ['value', 'paymentTerms'];
-    const touchedApproval = approvalFields.some((k) => k in fields && fields[k] !== before[k]);
+    const touchedApproval =
+      ('value' in fields && fields.value !== before.value) ||
+      ('paymentTerms' in fields && !paymentTermsEqual(fields.paymentTerms, before.paymentTerms));
     const invalidatesApproval = touchedApproval && !!before.valueApproval;
     const nextFields: Partial<PurchaseRequest> = invalidatesApproval ? { ...fields, valueApproval: undefined } : fields;
 
@@ -481,6 +482,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
           request={selectedRequest}
           onClose={() => setSelectedId(null)}
           currentUser={currentUser}
+          aprovacaoObrigatoria={aprovacaoObrigatoria}
           onAdvanceStatus={(id) => { handleAdvanceStatus(id); setSelectedId(null); }}
           onSkipStatus={(id) => { handleSkipStatus(id); setSelectedId(null); }}
           onApprove={(id, name, approvalId) => { handleApprove(id, name, approvalId); }}

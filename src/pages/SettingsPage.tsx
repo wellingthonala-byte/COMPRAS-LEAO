@@ -412,6 +412,23 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
     if (settings.security.sessaoMinutos !== '' && (!Number.isFinite(sessaoMinutosNum) || sessaoMinutosNum <= 0)) {
       setSaveState('error'); setSaveError('Duração da sessão inválida.'); return;
     }
+    // Os dois avisos abaixo já apareciam em vermelho na tela (ApprovalSection/
+    // SecuritySection), mas eram só cosméticos — a gravação seguia normalmente
+    // com o dado inconsistente. Mesma lógica exata dos dois lugares.
+    const valorAlcadaNum = Number(settings.approval.valorAlcada);
+    const autoAprovarAbaixoNum = Number(settings.approval.autoAprovarAbaixo);
+    if (valorAlcadaNum > 0 && autoAprovarAbaixoNum > 0 && autoAprovarAbaixoNum >= valorAlcadaNum) {
+      setSaveState('error'); setSaveError('O valor de auto-aprovação deve ser menor que a alçada.'); return;
+    }
+    const ipTrimmed = settings.security.ipPermitido.trim();
+    if (ipTrimmed) {
+      const ipParts = ipTrimmed.split(',').map((p) => p.trim()).filter(Boolean);
+      const ipRegex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?$/;
+      const isSpecialIp = (p: string) => /^(todos|all)$/i.test(p);
+      if (ipParts.some((p) => !isSpecialIp(p) && !ipRegex.test(p))) {
+        setSaveState('error'); setSaveError('Formato de IP/CIDR inválido em "IPs permitidos".'); return;
+      }
+    }
     setSaveState('dirty');
     const t = setTimeout(() => { saveNow(settings); }, 700);
     return () => clearTimeout(t);
@@ -852,14 +869,28 @@ function ProfilesSection({ rolePerms, setRolePerms, showToast, currentUserRole }
 
     setSaving(cellKey);
     try {
-      await Promise.all(affected.map((r) => saveRolePermission(r, module, next)));
-      setRolePerms((prev) => {
-        const copy = new Map(prev);
-        affected.forEach((r) => copy.set(`${r}:${module}`, next));
-        return copy;
-      });
-    } catch (e) {
-      showToast(`Erro ao salvar permissão: ${e instanceof Error ? e.message : 'tente novamente'}`);
+      // allSettled, não all: admin e gestor são gravados em requisições
+      // separadas — se uma falhar (ex.: queda de rede no meio), a outra pode
+      // ter sido concluída. Com Promise.all um catch único escondia isso e o
+      // estado local não refletia nenhuma das duas, deixando banco e UI
+      // divergentes em silêncio.
+      const results = await Promise.allSettled(affected.map((r) => saveRolePermission(r, module, next)));
+      const succeeded = affected.filter((_, i) => results[i].status === 'fulfilled');
+      const failed = affected.filter((_, i) => results[i].status === 'rejected');
+      if (succeeded.length > 0) {
+        setRolePerms((prev) => {
+          const copy = new Map(prev);
+          succeeded.forEach((r) => copy.set(`${r}:${module}`, next));
+          return copy;
+        });
+      }
+      if (failed.length > 0) {
+        showToast(
+          succeeded.length > 0
+            ? `Salvou para ${succeeded.join('/')} mas falhou para ${failed.join('/')} — os dois papéis ficaram com valores diferentes. Tente de novo.`
+            : `Erro ao salvar permissão de ${failed.join('/')} — tente novamente.`
+        );
+      }
     } finally {
       setSaving(null);
     }

@@ -374,7 +374,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
     const req: PurchaseRequest = {
       id: crypto.randomUUID(), number,
       requester: currentUser.name, requesterInitials: currentUser.initials,
-      sector: 'Manutenção', priority: prio, status: 'Nova Solicitação',
+      sector: os.costCenter, priority: prio, status: 'Nova Solicitação',
       createdAt: now, deliveryForecast: os.dueDate || now.slice(0, 10),
       items: (os.materials.length > 0 ? os.materials : [{ id: 'm0', product: `Peças para ${os.title}`, code: '', quantity: 1, unit: 'un', unitValue: 0 }]).map((m, i) => ({
         id: `item-${Date.now()}-${i}`, description: m.product, quantity: m.quantity,

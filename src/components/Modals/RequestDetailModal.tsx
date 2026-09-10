@@ -14,11 +14,20 @@ import { PriorityBadge, StatusBadge } from '../UI/Badge';
 import { Avatar } from '../UI/Avatar';
 import { STATUS_ORDER, computeSkipTarget } from '../../data/mockData';
 import { UNITS, DEFAULT_UNIT } from '../../data/units';
-import { useApprovalSettings } from '../../lib/useApprovalSettings';
 
 interface RequestDetailModalProps {
   request: PurchaseRequest;
   currentUser: AppUser;
+  /**
+   * Vem do KanbanPage (mesma leitura que decide handleApprove/
+   * handleApproveValue) em vez de a Modal buscar por conta própria — as duas
+   * instâncias independentes do hook podiam divergir (a página já montada
+   * com um valor antigo, a Modal remontando com o valor novo), fazendo o
+   * botão "Confirmar Aprovação" ficar visível e clicável mas o handler
+   * recusar em silêncio, travando o botão (isSubmitting nunca resetava, sem
+   * nenhuma mensagem de erro).
+   */
+  aprovacaoObrigatoria: boolean;
   onClose: () => void;
   onAdvanceStatus: (id: string) => void;
   onSkipStatus: (id: string) => void;
@@ -42,8 +51,7 @@ const statusIcons: Partial<Record<Status, React.ReactNode>> = {
   'Finalizado': <ChevronRight size={14} />,
 };
 
-export function RequestDetailModal({ request, currentUser, onClose, onAdvanceStatus, onSkipStatus, onApprove, onApproveValue, onEdit, onCancel }: RequestDetailModalProps) {
-  const { aprovacaoObrigatoria } = useApprovalSettings();
+export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria, onClose, onAdvanceStatus, onSkipStatus, onApprove, onApproveValue, onEdit, onCancel }: RequestDetailModalProps) {
   // Com a aprovação obrigatória desligada (Configurações › Fluxo de
   // Aprovação), o próprio comprador pode confirmar mérito e valor — o
   // registro de quem aprovou continua existindo, só deixa de exigir que
