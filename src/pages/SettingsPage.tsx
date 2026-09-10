@@ -12,6 +12,7 @@ import { AppUser, Role, loadUsers } from '../data/users';
 import { PAYMENT_TERMS_PRESETS } from '../lib/paymentTerms';
 import { nationalHolidays } from '../lib/finance';
 import { countsAsPurchase } from '../lib/financeSync';
+import { syncRequests } from '../lib/requestSyncQueue';
 import {
   fetchAppSettings, saveAppSettings, fetchRolePermissions, saveRolePermission,
   buildPermissionMap, isModuleAllowed, dbRolesFor, fetchRealUsers, RealUser, uploadLogo,
@@ -582,7 +583,7 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
                 {active === 'financeiro' && <FinanceSection settings={settings} patch={patch} />}
                 {active === 'notificacoes' && <NotificationsSection settings={settings} patch={patch} />}
                 {active === 'seguranca' && <SecuritySection settings={settings} patch={patch} users={users} />}
-                {active === 'backup' && <BackupSection settings={settings} setSettings={setSettings} showToast={showToast} />}
+                {active === 'backup' && <BackupSection settings={settings} setSettings={setSettings} showToast={showToast} currentUser={currentUser} />}
                 {active === 'personalizacao' && <CustomizationSection settings={settings} patch={patch} />}
                 {active === 'auditoria' && <AuditSection requests={requests} />}
                 {active === 'banco' && <DatabaseSection requests={requests} users={users} settings={settings} />}
@@ -1181,8 +1182,8 @@ function SecuritySection({ settings, patch, users }: { settings: AppSettings; pa
   );
 }
 
-function BackupSection({ settings, setSettings, showToast }: {
-  settings: AppSettings; setSettings: React.Dispatch<React.SetStateAction<AppSettings>>; showToast: (m: string) => void;
+function BackupSection({ settings, setSettings, showToast, currentUser }: {
+  settings: AppSettings; setSettings: React.Dispatch<React.SetStateAction<AppSettings>>; showToast: (m: string) => void; currentUser: AppUser;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [confirmRestore, setConfirmRestore] = useState<string | null>(null);
@@ -1210,7 +1211,7 @@ function BackupSection({ settings, setSettings, showToast }: {
     showToast('Backup gerado e baixado');
   };
 
-  const doRestore = (content: string, skipVersionCheck = false) => {
+  const doRestore = async (content: string, skipVersionCheck = false) => {
     try {
       const parsed = JSON.parse(content);
       if (!skipVersionCheck && typeof parsed.version === 'number' && parsed.version !== BACKUP_SCHEMA_VERSION) {
@@ -1223,6 +1224,22 @@ function BackupSection({ settings, setSettings, showToast }: {
       Object.entries(data).forEach(([k, v]) => {
         if (k.startsWith('compras-leao-')) localStorage.setItem(k, JSON.stringify(v));
       });
+      // Gravar só no localStorage não restaura nada numa sessão real: ao
+      // recarregar, o próprio SettingsPage/App.tsx buscam Configurações e
+      // Solicitações do Supabase e sobrescrevem de volta o que acabou de
+      // ser restaurado. Para authSource 'supabase', reenvia explicitamente
+      // as Configurações e Solicitações do backup para o servidor — só
+      // depois disso o reload reflete a restauração de fato.
+      if (currentUser.authSource === 'supabase') {
+        const restoredSettings = data['compras-leao-settings'];
+        if (restoredSettings && typeof restoredSettings === 'object') {
+          await saveAppSettings(restoredSettings as Record<string, unknown>, currentUser.id).catch(() => {});
+        }
+        const restoredRequests = data['compras-leao-requests'];
+        if (Array.isArray(restoredRequests) && restoredRequests.length > 0) {
+          await syncRequests(restoredRequests as PurchaseRequest[], currentUser.id).catch(() => {});
+        }
+      }
       showToast('Backup restaurado — recarregando...');
       setTimeout(() => window.location.reload(), 1200);
     } catch {

@@ -45,7 +45,12 @@ function getInitials(name: string): string {
 export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageProps) {
   const navigate = useNavigate();
   const { centrosCusto: sectors, categorias: applications } = usePurchasingOptions();
-  const [requester, setRequester] = useState(currentUser.name);
+  // O solicitante é sempre quem está logado — nunca texto livre. Antes esse
+  // campo era editável e comparado por nome exato contra currentUser.name em
+  // várias travas de autoaprovação (ex.: useApprovalSettings); um comprador
+  // digitando qualquer variação do próprio nome bastava para o sistema achar
+  // que a solicitação era de "outra pessoa" e liberar a autoaprovação.
+  const requester = currentUser.name;
   const [sector, setSector] = useState('');
   const [priority, setPriority] = useState<Priority>('Não Urgente');
   const [observations, setObservations] = useState('');
@@ -158,13 +163,10 @@ export function NewRequestPage({ requests, currentUser, onAdd }: NewRequestPageP
             </h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Solicitante <span className="text-red-500">*</span></label>
-                <input
-                  type="text" required value={requester}
-                  onChange={(e) => setRequester(e.target.value)}
-                  placeholder="Nome do solicitante" spellCheck={true} lang="pt-BR"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
-                />
+                <label className="block text-xs font-medium text-slate-600 mb-1">Solicitante</label>
+                <div className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-slate-50 text-slate-600">
+                  {requester}
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Setor <span className="text-red-500">*</span></label>

@@ -132,9 +132,18 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
     fetchServiceOrders().then((remote) => {
       if (cancelled) return;
       if (remote === null) { setOffline(true); return; }
+      // O.S. criada/editada ENQUANTO este fetch ainda estava em voo (ex.:
+      // usuário salvou e navegou para outra tela antes dos 800ms de debounce
+      // do efeito de sync abaixo) não pode ser simplesmente descartada aqui —
+      // prevOrders.current já reflete o estado local mais recente (o efeito
+      // de sync mantém isso atualizado em tempo real enquanto
+      // remoteLoaded.current for false). Preserva essas O.S. locais que ainda
+      // não existem no servidor, em vez de sumir sem nunca terem sido
+      // enviadas nem enfileiradas para reenvio.
+      const localOnly = prevOrders.current.filter((o) => !remote.some((r) => r.id === o.id));
       remoteLoaded.current = true;
       prevOrders.current = remote;
-      setOrders(remote);
+      setOrders(localOnly.length > 0 ? [...localOnly, ...remote] : remote);
       setOffline(false);
     });
     // Reenvia O.S. que ficaram pendentes de uma sessão anterior
