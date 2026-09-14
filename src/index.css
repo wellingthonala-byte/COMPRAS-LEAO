@@ -22,3 +22,14 @@ table td.tabular-nums,
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/* Traço "industrial" pra todos os ícones do sistema (lucide-react sempre
+   marca o svg com a classe "lucide") — mais grosso e com cantos retos em
+   vez do arredondado fino padrão da biblioteca. Uma regra só aqui troca
+   o traço em toda a aplicação, sem precisar editar ícone por ícone em
+   cada tela. */
+.lucide {
+  stroke-width: 2.25px !important;
+  stroke-linecap: square !important;
+  stroke-linejoin: miter !important;
+}
