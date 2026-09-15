@@ -410,28 +410,31 @@ export function SettingsPage({ currentUser, requests }: SettingsPageProps) {
   useEffect(() => {
     if (settingsLoading) return;
     if (justLoaded.current) { justLoaded.current = false; return; }
+    // Nenhum destes 4 campos (pesos de fornecedor, duração de sessão, alçada
+    // de aprovação, IPs permitidos) é lido em nenhum outro lugar do sistema
+    // hoje — bloquear a gravação da tela INTEIRA por causa deles não protege
+    // nada, e um valor inconsistente deixado em qualquer um travava até
+    // edições completamente diferentes (ex.: dados da empresa em "Geral")
+    // sem nenhuma explicação visível pra quem estava editando outra aba. O
+    // aviso em vermelho já aparece no lugar certo (ApprovalSection/
+    // SecuritySection/SuppliersSection) — aqui só registra e segue salvando.
     const suppliersTotalScore = settings.suppliers.criterioPrazo + settings.suppliers.criterioPreco + settings.suppliers.criterioQualidade;
-    if (suppliersTotalScore !== 100) { setSaveState('error'); setSaveError('Soma dos pesos de avaliação de fornecedores precisa ser 100%.'); return; }
     const sessaoMinutosNum = Number(settings.security.sessaoMinutos);
-    if (settings.security.sessaoMinutos !== '' && (!Number.isFinite(sessaoMinutosNum) || sessaoMinutosNum <= 0)) {
-      setSaveState('error'); setSaveError('Duração da sessão inválida.'); return;
-    }
-    // Os dois avisos abaixo já apareciam em vermelho na tela (ApprovalSection/
-    // SecuritySection), mas eram só cosméticos — a gravação seguia normalmente
-    // com o dado inconsistente. Mesma lógica exata dos dois lugares.
     const valorAlcadaNum = Number(settings.approval.valorAlcada);
     const autoAprovarAbaixoNum = Number(settings.approval.autoAprovarAbaixo);
-    if (valorAlcadaNum > 0 && autoAprovarAbaixoNum > 0 && autoAprovarAbaixoNum >= valorAlcadaNum) {
-      setSaveState('error'); setSaveError('O valor de auto-aprovação deve ser menor que a alçada.'); return;
-    }
     const ipTrimmed = settings.security.ipPermitido.trim();
-    if (ipTrimmed) {
-      const ipParts = ipTrimmed.split(',').map((p) => p.trim()).filter(Boolean);
+    const ipInvalid = ipTrimmed ? ipTrimmed.split(',').map((p) => p.trim()).filter(Boolean).some((p) => {
+      const isSpecialIp = /^(todos|all)$/i.test(p);
       const ipRegex = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}(\/\d{1,2})?$/;
-      const isSpecialIp = (p: string) => /^(todos|all)$/i.test(p);
-      if (ipParts.some((p) => !isSpecialIp(p) && !ipRegex.test(p))) {
-        setSaveState('error'); setSaveError('Formato de IP/CIDR inválido em "IPs permitidos".'); return;
-      }
+      return !isSpecialIp && !ipRegex.test(p);
+    }) : false;
+    if (
+      suppliersTotalScore !== 100 ||
+      (settings.security.sessaoMinutos !== '' && (!Number.isFinite(sessaoMinutosNum) || sessaoMinutosNum <= 0)) ||
+      (valorAlcadaNum > 0 && autoAprovarAbaixoNum > 0 && autoAprovarAbaixoNum >= valorAlcadaNum) ||
+      ipInvalid
+    ) {
+      console.warn('[Configurações] Inconsistência em outro campo (pesos de fornecedor/sessão/alçada/IP) — salvando de todo modo, aviso já visível na aba correspondente.');
     }
     setSaveState('dirty');
     const t = setTimeout(() => { saveNow(settings); }, 700);
