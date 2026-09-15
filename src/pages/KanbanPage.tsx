@@ -61,7 +61,20 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   const [search, setSearch] = useState('');
   const [filterPriority, setFilterPriority] = useState<Priority | ''>('');
   const [filterSector, setFilterSector] = useState('');
+  const [filterMonth, setFilterMonth] = useState('');
   const [view, setView] = useState<'kanban' | 'lista'>('kanban');
+
+  // Meses com solicitação de verdade, do mais recente pro mais antigo —
+  // não uma lista fixa de 12 meses, senão apareceriam opções vazias (ou
+  // faltaria mês de anos anteriores).
+  const monthOptions = useMemo(() => {
+    const months = [...new Set(requests.map((r) => r.createdAt.slice(0, 7)))].sort((a, b) => b.localeCompare(a));
+    return months.map((m) => {
+      const [y, mo] = m.split('-');
+      const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      return { value: m, label: label.charAt(0).toUpperCase() + label.slice(1) };
+    });
+  }, [requests]);
 
   const selectedRequest = requests.find((r) => r.id === selectedId);
 
@@ -104,9 +117,10 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
         r.items.some((i) => i.description.toLowerCase().includes(search.toLowerCase()));
       const matchPriority = !filterPriority || r.priority === filterPriority;
       const matchSector = !filterSector || r.sector === filterSector;
-      return matchSearch && matchPriority && matchSector;
+      const matchMonth = !filterMonth || r.createdAt.slice(0, 7) === filterMonth;
+      return matchSearch && matchPriority && matchSector && matchMonth;
     });
-  }, [requests, search, filterPriority, filterSector]);
+  }, [requests, search, filterPriority, filterSector, filterMonth]);
 
   /* ------------- Indicadores resumidos (cabeçalho) — mesmo padrão de O.S. ------------- */
   const stats = useMemo(() => {
@@ -386,7 +400,7 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     }
   };
 
-  const hasFilters = search || filterPriority || filterSector;
+  const hasFilters = search || filterPriority || filterSector || filterMonth;
 
   return (
     <div className="flex flex-col min-h-screen lg:pl-60 bg-slate-50">
@@ -442,9 +456,18 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
               <option value="">Todos os Setores</option>
               {filterSectorOptions.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
+            <select
+              value={filterMonth}
+              onChange={(e) => setFilterMonth(e.target.value)}
+              aria-label="Mês"
+              className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            >
+              <option value="">Todos os Meses</option>
+              {monthOptions.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </select>
             {hasFilters && (
               <button
-                onClick={() => { setSearch(''); setFilterPriority(''); setFilterSector(''); }}
+                onClick={() => { setSearch(''); setFilterPriority(''); setFilterSector(''); setFilterMonth(''); }}
                 className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
               >
                 <FilterX size={13} /> Limpar filtros

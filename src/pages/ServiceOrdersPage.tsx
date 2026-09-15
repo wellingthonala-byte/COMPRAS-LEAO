@@ -110,6 +110,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   const [fCategory, setFCategory] = useState('');
   const [fSector, setFSector] = useState('');
   const [fPeriod, setFPeriod] = useState('');
+  const [fMonth, setFMonth] = useState('');
   const [fOverdue, setFOverdue] = useState(false);
 
   useEffect(() => { const t = setTimeout(() => setLoading(false), 350); return () => clearTimeout(t); }, []);
@@ -216,8 +217,19 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   }, [orders]);
 
   const technicians = useMemo(() => [...new Set(orders.map((o) => o.technician).filter(Boolean))].sort(), [orders]);
-  const hasFilters = search || fStatus || fPriority || fTechnician || fCategory || fSector || fPeriod || fOverdue;
-  const clearFilters = () => { setSearch(''); setFStatus(''); setFPriority(''); setFTechnician(''); setFCategory(''); setFSector(''); setFPeriod(''); setFOverdue(false); };
+  // Meses com O.S. de verdade, do mais recente pro mais antigo — igual ao
+  // Kanban de Compras, pra filtrar um mês específico em vez de só janelas
+  // relativas (7 dias/30 dias/este mês/este ano).
+  const monthOptions = useMemo(() => {
+    const months = [...new Set(orders.map((o) => o.openedAt.slice(0, 7)))].sort((a, b) => b.localeCompare(a));
+    return months.map((m) => {
+      const [y, mo] = m.split('-');
+      const label = new Date(Number(y), Number(mo) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      return [m, label.charAt(0).toUpperCase() + label.slice(1)] as [string, string];
+    });
+  }, [orders]);
+  const hasFilters = search || fStatus || fPriority || fTechnician || fCategory || fSector || fPeriod || fMonth || fOverdue;
+  const clearFilters = () => { setSearch(''); setFStatus(''); setFPriority(''); setFTechnician(''); setFCategory(''); setFSector(''); setFPeriod(''); setFMonth(''); setFOverdue(false); };
 
   const filtered = useMemo(() => {
     const now = new Date();
@@ -229,6 +241,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
     return orders.filter((o) =>
       (!q || [o.number, o.title, o.customer ?? '', o.equipment.name, o.equipment.location ?? '', o.technician, o.requester].join(' ').toLowerCase().includes(q)) &&
       (!start || new Date(o.openedAt) >= start) &&
+      (!fMonth || o.openedAt.slice(0, 7) === fMonth) &&
       (!fStatus || o.status === fStatus) &&
       (!fPriority || o.priority === fPriority) &&
       (!fTechnician || o.technician === fTechnician) &&
@@ -236,7 +249,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
       (!fSector || o.costCenter === fSector) &&
       (!fOverdue || osIsOverdue(o))
     );
-  }, [orders, search, fStatus, fPriority, fTechnician, fCategory, fSector, fPeriod, fOverdue]);
+  }, [orders, search, fStatus, fPriority, fTechnician, fCategory, fSector, fPeriod, fMonth, fOverdue]);
 
   /* ------------- Indicadores resumidos (cabeçalho) ------------- */
   const stats = useMemo(() => {
@@ -497,6 +510,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
               [fCategory, setFCategory, CATEGORIES.map((c) => [c, c]), 'Categoria'],
               [fSector, setFSector, SECTORS.map((s) => [s, s]), 'Centro de custo'],
               [fPeriod, setFPeriod, [['7d', 'Últimos 7 dias'], ['30d', 'Últimos 30 dias'], ['mes', 'Este mês'], ['ano', 'Este ano']], 'Período'],
+              [fMonth, setFMonth, monthOptions, 'Mês'],
             ] as [string, (v: string) => void, string[][], string][]).map(([value, setter, options, label]) => (
               <select key={label} value={value} onChange={(e) => setter(e.target.value)} aria-label={label}
                 className="text-sm border border-slate-200 rounded-lg px-3 py-1.5 bg-white text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500">
