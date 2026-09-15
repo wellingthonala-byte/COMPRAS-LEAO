@@ -20,6 +20,7 @@ import { PurchaseRequest } from '../types';
 import { AppUser, loadUsers } from '../data/users';
 import { normalizeOsUnit } from '../data/units';
 import { usePurchasingOptions } from '../lib/usePurchasingOptions';
+import { useApprovalSettings } from '../lib/useApprovalSettings';
 import { toCSV, toXLS } from '../utils/exportTable';
 import {
   ServiceOrder, OSStatus, OSPriority, MaintenanceType, OS_FLOW, OS_COLUMNS,
@@ -87,6 +88,11 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
   const [editingOS, setEditingOS] = useState<ServiceOrder | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [view, setView] = useState<'kanban' | 'lista'>('kanban');
+  const { aprovacaoObrigatoria } = useApprovalSettings();
+  // Mesma regra do módulo de Compras: com a aprovação obrigatória
+  // desligada, o próprio comprador confirma e avança sem precisar de um
+  // gestor.
+  const canActOnApproval = currentUser.role === 'gestor' || (!aprovacaoObrigatoria && currentUser.role === 'comprador');
   const [offline, setOffline] = useState(false);
   const [pendingSync, setPendingSync] = useState(() => pendingServiceOrderSyncCount());
   // Snapshot da última sincronização e flag "já veio do servidor pelo menos
@@ -272,7 +278,7 @@ export function ServiceOrdersPage({ currentUser, requests, onCreatePurchaseReque
 
   const canAdvanceFrom = (status: OSStatus): boolean => {
     if (status === 'Faturada' || status === 'Cancelada' || status === 'Pausada') return false;
-    if (status === 'Aguardando Aprovação') return currentUser.role === 'gestor';
+    if (status === 'Aguardando Aprovação') return canActOnApproval;
     // Finalizada → Faturada e demais transições: comprador ou gestor
     return currentUser.role === 'comprador' || currentUser.role === 'gestor';
   };
@@ -1484,7 +1490,7 @@ function OSDrawer({ os, currentUser, onClose, onAdvance, canAdvanceFrom, onCance
               <span className="flex items-center gap-2 bg-orange-100 text-orange-700 px-4 py-2 rounded-lg text-sm font-medium">
                 <Pause size={15} /> Execução pausada
               </span>
-            ) : os.status === 'Aguardando Aprovação' && currentUser.role !== 'gestor' ? (
+            ) : os.status === 'Aguardando Aprovação' && !canAdvanceFrom(os.status) ? (
               <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
                 <ShieldAlert size={15} /> Aguardando aprovação do gestor
               </span>
