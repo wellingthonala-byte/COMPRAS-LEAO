@@ -1,7 +1,7 @@
 import { X, ChevronRight, Edit3, ArrowRight, Clock, User, Building2, Calendar, Package, FileText, Truck, ShieldCheck, ShieldAlert, Save, MessageSquarePlus, CheckCheck, AlertCircle, RotateCcw, Printer, PiggyBank } from 'lucide-react';
 import { printPurchaseRequest } from '../../utils/printDocument';
 import { ObjectLinkView, ObjectLinkInput, normalizeUrl } from '../UI/ObjectLink';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { sendNotification } from '../../utils/notify';
 import { PurchaseRequest, Status } from '../../types';
 import { PaymentTerms } from '../../types/finance';
@@ -102,6 +102,15 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
   const [cancelling, setCancelling] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Toda ação (aprovar, avançar, pular, cancelar) usa este mesmo booleano pra
+  // desabilitar o botão contra duplo clique, mas ele nunca era resetado —
+  // como a Modal não desmonta entre uma ação e a próxima (só o conteúdo
+  // troca conforme `request` muda), aprovar o mérito deixava o botão de
+  // "Avançar" seguinte permanentemente travado, sem nenhum erro visível, até
+  // fechar e reabrir a Modal. Reseta sempre que o pedido muda de verdade —
+  // exatamente o momento em que uma ação teve efeito e outro botão pode
+  // aparecer no lugar.
+  useEffect(() => { setIsSubmitting(false); }, [request]);
   const [supplierValueError, setSupplierValueError] = useState('');
   const [itemEditError, setItemEditError] = useState('');
 
