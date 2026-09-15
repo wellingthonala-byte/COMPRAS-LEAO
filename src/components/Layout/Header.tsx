@@ -17,10 +17,26 @@ interface HeaderProps {
   onPrimaryAction?: () => void;
 }
 
+const READ_NOTIFICATIONS_KEY = 'compras-leao-read-notifications';
+
+function readPersistedReadIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(READ_NOTIFICATIONS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
 export function Header({ title, subtitle, searchValue, onSearchChange, requests = [], primaryActionLabel, onPrimaryAction }: HeaderProps) {
   const navigate = useNavigate();
   const [showNotifications, setShowNotifications] = useState(false);
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  // Antes ficava só em useState — o Header é recriado do zero a cada troca
+  // de tela (cada página renderiza a sua própria instância), então "marcar
+  // como lida" era esquecido no instante seguinte e o sininho voltava a
+  // acender sozinho. Persiste no localStorage pra sobreviver à navegação.
+  const [readIds, setReadIds] = useState<Set<string>>(readPersistedReadIds);
 
   const notifications = requests
     .flatMap((r) =>
@@ -41,7 +57,14 @@ export function Header({ title, subtitle, searchValue, onSearchChange, requests 
   const unreadCount = notifications.filter((n) => !readIds.has(n.id)).length;
 
   const markAllRead = () => {
-    setReadIds(new Set(notifications.map((n) => n.id)));
+    // Mantém as antigas + as atuais — sem isso, uma notificação lida numa
+    // sessão anterior mas fora da janela das 10 mais recentes de agora
+    // seria "esquecida" (removida do Set) e o cálculo ficaria instável.
+    // Limita a 200 ids guardados pra não crescer sem fim no localStorage.
+    const merged = new Set([...readIds, ...notifications.map((n) => n.id)]);
+    const capped = new Set([...merged].slice(-200));
+    setReadIds(capped);
+    try { localStorage.setItem(READ_NOTIFICATIONS_KEY, JSON.stringify([...capped])); } catch { /* ignora */ }
   };
 
   const formatTime = (dateStr: string) => {
