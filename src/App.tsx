@@ -9,8 +9,10 @@ import { FinancePage } from './pages/FinancePage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ServiceOrdersPage } from './pages/ServiceOrdersPage';
 import { LoginPage } from './pages/LoginPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { PurchaseRequest } from './types';
 import { AppUser } from './data/users';
+import { getSupabase } from './lib/supabase';
 import { fetchRequests, insertStatusHistory, logoutSupabase, revalidateSession } from './lib/backend';
 import { initInstallments } from './lib/financeStore';
 import { useLimboAlert } from './lib/useFinanceAlerts';
@@ -60,6 +62,17 @@ export default function App() {
   const [pendingSync, setPendingSync] = useState(0);
   const prevRequests = useRef<PurchaseRequest[]>(requests);
   const remoteLoaded = useRef(false);
+  // O link do e-mail "Esqueci minha senha" autentica no Supabase e dispara
+  // este evento antes de qualquer outra coisa — sem isso, a tela normal de
+  // login abriria por cima e o usuário nunca veria onde digitar a senha nova.
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+
+  useEffect(() => {
+    const { data } = getSupabase().auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
 
   // Cache local sempre atualizado (fallback offline)
   useEffect(() => {
@@ -206,6 +219,10 @@ export default function App() {
     logoutSupabase();
     setCurrentUser(null);
   };
+
+  if (passwordRecovery) {
+    return <ResetPasswordPage onDone={() => { setPasswordRecovery(false); getSupabase().auth.signOut(); }} />;
+  }
 
   if (!currentUser) {
     return <LoginPage onLogin={setCurrentUser} />;
