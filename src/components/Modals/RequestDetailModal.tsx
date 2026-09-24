@@ -113,6 +113,27 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
   useEffect(() => { setIsSubmitting(false); }, [request]);
   const [supplierValueError, setSupplierValueError] = useState('');
   const [itemEditError, setItemEditError] = useState('');
+  const [noteDraft, setNoteDraft] = useState('');
+
+  // Observação livre — qualquer pessoa com acesso ao pedido (inclusive o
+  // solicitante) pode registrar um comentário na linha do tempo, sem
+  // depender de estar corrigindo um item ou respondendo a uma objeção.
+  const handleAddNote = () => {
+    const text = noteDraft.trim();
+    if (!text) return;
+    onEdit(request.id, {
+      history: [
+        ...request.history,
+        {
+          id: `h-${Date.now()}`,
+          date: new Date().toISOString(),
+          user: currentUser.name,
+          action: `Observação: ${text}`,
+        },
+      ],
+    });
+    setNoteDraft('');
+  };
 
   const [editingSupplier, setEditingSupplier] = useState(false);
   const [objectionItemId, setObjectionItemId] = useState<string | null>(null);
@@ -1045,6 +1066,24 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
               <Clock size={14} className="text-violet-600" />
               <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Histórico de Alterações</h3>
             </div>
+
+            <div className="flex gap-2 mb-4">
+              <textarea
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                placeholder="Adicionar uma observação sobre esta solicitação..."
+                rows={1}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 resize-none bg-white"
+              />
+              <button
+                onClick={handleAddNote}
+                disabled={!noteDraft.trim()}
+                className="px-3 py-2 text-xs font-medium text-violet-700 border border-violet-200 hover:bg-violet-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors flex-shrink-0"
+              >
+                Adicionar
+              </button>
+            </div>
+
             <div className="space-y-2">
               {request.history.map((entry) => (
                 <div key={entry.id} className="flex gap-3 items-start">
