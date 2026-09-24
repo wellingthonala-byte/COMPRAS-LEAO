@@ -133,7 +133,7 @@ function renderHTML(doc: PrintDoc): string {
 <title>${esc(doc.docTitle)} ${esc(doc.number)}</title>
 <style>
   :root { --accent: ${doc.accent}; --ink: #1e293b; --muted: #64748b; --line: #cbd5e1; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; overflow-wrap: anywhere; word-break: break-word; }
   html, body { background: #f1f5f9; }
   body { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; color: var(--ink); font-size: 11px; line-height: 1.45; }
   .sheet { background: white; max-width: 210mm; margin: 16px auto; padding: 14mm 12mm 22mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); position: relative; }
