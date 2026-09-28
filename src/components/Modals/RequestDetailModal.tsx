@@ -1171,10 +1171,25 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                 Bloqueado — corrija as objeções
               </span>
             ) : canAdvance && isApprovalStep && !isApproved ? (
-              <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
-                <ShieldAlert size={15} />
-                {aprovacaoObrigatoria ? 'Aguardando aprovação do gestor' : 'Aguardando confirmação de aprovação'}
-              </span>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
+                  <ShieldAlert size={15} />
+                  {aprovacaoObrigatoria ? 'Aguardando aprovação do gestor' : 'Aguardando confirmação de aprovação'}
+                </span>
+                {/* Com "Aprovação obrigatória" desligada em Configurações, o
+                    comprador pode seguir o fluxo mesmo com a aprovação ainda
+                    pendente — o aviso acima continua visível. */}
+                {!aprovacaoObrigatoria && currentUser.role === 'comprador' && (
+                  <button
+                    onClick={() => { if (isSubmitting) return; setIsSubmitting(true); onAdvanceStatus(request.id); }}
+                    disabled={isSubmitting}
+                    className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm shadow-violet-200"
+                  >
+                    <ArrowRight size={15} />
+                    Avançar para {STATUS_ORDER[currentIdx + 1]}
+                  </button>
+                )}
+              </div>
             ) : canAdvance && valueApprovalBlocksAdvance ? (
               <span className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-lg text-sm font-medium">
                 <ShieldAlert size={15} />

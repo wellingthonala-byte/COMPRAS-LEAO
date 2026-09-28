@@ -177,8 +177,15 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     // Defesa em profundidade: mesma trava financeira do modal, replicada
     // aqui para não depender só da UI para bloquear o avanço.
     if (blocksAdvanceForValueApproval(req)) return;
+    // Aprovação pendente: só passa se "Aprovação obrigatória" estiver desligada
+    // em Configurações (mesma regra do botão no modal).
+    const pendingApproval = req.status === 'Em Aprovação' && !req.approvedBy;
+    if (pendingApproval && aprovacaoObrigatoria) return;
     const nextStatus = STATUS_ORDER[idx + 1];
-    const advanced = entry('Status alterado', req.status, nextStatus);
+    const advanced = entry(
+      pendingApproval ? 'Avançado pelo comprador sem aprovação prévia do gestor' : 'Status alterado',
+      req.status, nextStatus
+    );
     const updated = applyChange(id, (r) => ({
       ...r,
       status: nextStatus,
