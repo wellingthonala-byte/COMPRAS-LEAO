@@ -128,8 +128,8 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
     const overdue = filtered.filter((r) => r.status !== 'Finalizado' && r.status !== 'Cancelada' && new Date(r.deliveryForecast + 'T23:59:59') < new Date());
     return [
       { label: 'Total de Solicitações', value: String(filtered.length), icon: ClipboardList, color: 'text-violet-600', bg: 'bg-violet-50', tip: 'Total de solicitações no filtro atual.' },
-      { label: 'Em Aprovação', value: String(filtered.filter((r) => r.status === 'Em Aprovação').length), icon: ShieldAlert, color: 'text-amber-600', bg: 'bg-amber-50', tip: 'Aguardando aprovação de mérito do gestor.' },
       { label: 'Em Cotação', value: String(filtered.filter((r) => r.status === 'Em Cotação').length), icon: DollarSign, color: 'text-sky-600', bg: 'bg-sky-50', tip: 'Comprador buscando fornecedor/preço.' },
+      { label: 'Em Aprovação', value: String(filtered.filter((r) => r.status === 'Em Aprovação').length), icon: ShieldAlert, color: 'text-amber-600', bg: 'bg-amber-50', tip: 'Aguardando aprovação de mérito do gestor.' },
       { label: 'Compradas', value: String(filtered.filter((r) => countsAsPurchase(r)).length), icon: ShoppingCart, color: 'text-indigo-600', bg: 'bg-indigo-50', tip: 'Já efetivamente compradas (Comprado em diante).' },
       { label: 'Objeções Pendentes', value: String(filtered.filter((r) => openObjectionsCount(r) > 0).length), icon: ShieldAlert, color: 'text-orange-600', bg: 'bg-orange-50', tip: 'Solicitações com objeção não resolvida em algum item.' },
       { label: 'Atrasadas', value: String(overdue.length), icon: AlarmClock, color: 'text-red-600', bg: 'bg-red-50', tip: 'Em aberto com prazo de entrega vencido.' },
@@ -323,9 +323,9 @@ export function KanbanPage({ requests, setRequests, currentUser }: KanbanPagePro
   };
 
   /**
-   * Segunda aprovação: o gestor aprova o VALOR cotado. É aqui que nasce o
-   * compromisso financeiro — a aprovação de mérito acontece antes da cotação,
-   * quando ainda não existe valor nem condição de pagamento.
+   * Aprovação de valor: o gestor aprova o VALOR cotado. É aqui que nasce o
+   * compromisso financeiro — só existe depois da cotação, quando já há valor
+   * e condição de pagamento (etapa "Em Aprovação", logo antes de "Comprado").
    */
   const handleApproveValue = (id: string) => {
     if (!canActOnApproval) return;

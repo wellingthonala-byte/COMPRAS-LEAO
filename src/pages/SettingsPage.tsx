@@ -957,7 +957,7 @@ function ApprovalSection({ settings, patch }: { settings: AppSettings; patch: Pa
   return (
     <div className="space-y-4">
       <Card title="Regras de Aprovação" subtitle="Regras aplicadas à etapa 'Em Aprovação' do Kanban">
-        <Toggle label="Aprovação obrigatória" hint="Toda solicitação precisa passar pelo gestor antes da cotação (regra ativa hoje no fluxo)"
+        <Toggle label="Aprovação obrigatória" hint="Toda solicitação precisa passar pelo gestor antes da compra (regra ativa hoje no fluxo)"
           checked={a.aprovacaoObrigatoria} onChange={(v) => patch('approval', { aprovacaoObrigatoria: v })} />
         <Toggle label="Aprovação por valor (alçada)" hint="Solicitações acima do valor de alçada exigem aprovação"
           checked={a.aprovacaoPorValor} onChange={(v) => patch('approval', { aprovacaoPorValor: v })} />

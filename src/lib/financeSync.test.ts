@@ -3,8 +3,9 @@ import { PurchaseRequest, Status } from '../types';
 import { Installment, PaymentTerms } from '../types/finance';
 import { buildHolidaySet, computeInstallments } from './finance';
 import {
-  canProjectInstallments, deriveInstallments, diffInstallments, isPurchasedOrLater, purchasedAtOf,
+  blocksAdvanceForValueApproval, canProjectInstallments, deriveInstallments, diffInstallments, isPurchasedOrLater, purchasedAtOf,
 } from './financeSync';
+import { STATUS_ORDER } from '../data/mockData';
 
 const HOLIDAYS = buildHolidaySet(2026, 2028);
 const NOW = '2026-08-20T12:00:00.000Z';
@@ -47,6 +48,35 @@ const approved = (over: Partial<PurchaseRequest> = {}) => makeRequest({
 /** Parcelas como ficariam logo após a aprovação de valor. */
 const afterApproval = (req: PurchaseRequest) =>
   deriveInstallments(req, [], NOW, HOLIDAYS) as Installment[];
+
+describe('ordem do fluxo e trava de avanço', () => {
+  it('a ordem oficial é Nova → Cotação → Aprovação → Comprado', () => {
+    expect(STATUS_ORDER.slice(0, 4)).toEqual(['Nova Solicitação', 'Em Cotação', 'Em Aprovação', 'Comprado']);
+  });
+
+  it('Em Cotação só exige valor e condição preenchidos para sair', () => {
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Em Cotação' }))).toBe(false);
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Em Cotação', value: undefined }))).toBe(true);
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Em Cotação', paymentTerms: undefined }))).toBe(true);
+  });
+
+  it('Em Aprovação exige a aprovação de valor para sair', () => {
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Em Aprovação' }))).toBe(true);
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Em Aprovação', value: undefined }))).toBe(true);
+    expect(blocksAdvanceForValueApproval(approved({ status: 'Em Aprovação' }))).toBe(false);
+  });
+
+  it('Comprado em diante só trava se tiver valor+condição sem aprovação de valor', () => {
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Comprado' }))).toBe(true);
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Comprado', value: undefined }))).toBe(false);
+    expect(blocksAdvanceForValueApproval(approved({ status: 'Comprado' }))).toBe(false);
+  });
+
+  it('Nova Solicitação e Cancelada nunca travam', () => {
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Nova Solicitação', value: undefined, paymentTerms: undefined }))).toBe(false);
+    expect(blocksAdvanceForValueApproval(makeRequest({ status: 'Cancelada' }))).toBe(false);
+  });
+});
 
 describe('fase do pedido', () => {
   it('reconhece as colunas a partir de Comprado', () => {

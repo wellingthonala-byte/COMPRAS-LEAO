@@ -3,8 +3,8 @@ import { Status } from '../types';
 /** Ordem oficial do fluxo de compras (colunas do Kanban). */
 export const STATUS_ORDER: Status[] = [
   'Nova Solicitação',
-  'Em Aprovação',
   'Em Cotação',
+  'Em Aprovação',
   'Comprado',
   'Em Rota',
   'Em Serviço',

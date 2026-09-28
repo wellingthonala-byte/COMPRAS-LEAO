@@ -72,7 +72,7 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
   // aparece (em modo informativo) para deixar claro o que falta.
   const hasValueApproval = !!request.valueApproval;
   const canProject = canProjectInstallments(request);
-  const isValueApprovalStep = !isCancelled && (hasValueApproval || canProject || request.status === 'Em Cotação');
+  const isValueApprovalStep = !isCancelled && (hasValueApproval || canProject || request.status === 'Em Cotação' || request.status === 'Em Aprovação');
   // Trava única, compartilhada com o KanbanPage (defesa em profundidade):
   // sem valor+condição em 'Em Cotação', ou sem aprovação de valor em
   // 'Comprado' e além, o pedido não pode avançar.
@@ -890,7 +890,7 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                   <p className="text-xs text-yellow-700">
                     {aprovacaoObrigatoria
                       ? 'Você está logado como gestor. Confirme a aprovação desta solicitação.'
-                      : 'Aprovação obrigatória está desligada — confirme para registrar a aprovação e liberar a cotação.'}
+                      : 'Aprovação obrigatória está desligada — confirme para registrar a aprovação e liberar a compra.'}
                   </p>
                   <div className="bg-white border border-yellow-200 rounded-lg px-3 py-2">
                     <p className="text-xs text-slate-500">{currentUser.role === 'gestor' ? 'Gestor' : 'Comprador'}</p>
@@ -1179,7 +1179,7 @@ export function RequestDetailModal({ request, currentUser, aprovacaoObrigatoria,
                 {/* Com "Aprovação obrigatória" desligada em Configurações, o
                     comprador pode seguir o fluxo mesmo com a aprovação ainda
                     pendente — o aviso acima continua visível. */}
-                {!aprovacaoObrigatoria && currentUser.role === 'comprador' && (
+                {!aprovacaoObrigatoria && currentUser.role === 'comprador' && !valueApprovalBlocksAdvance && (
                   <button
                     onClick={() => { if (isSubmitting) return; setIsSubmitting(true); onAdvanceStatus(request.id); }}
                     disabled={isSubmitting}

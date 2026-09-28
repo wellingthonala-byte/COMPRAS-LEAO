@@ -29,7 +29,7 @@ const exportBRL = (v: number) => v.toFixed(2).replace('.', ',');
 const isActive = (r: PurchaseRequest) => r.status !== 'Finalizado' && r.status !== 'Cancelada';
 
 const STATUS_COLORS: Record<string, string> = {
-  'Nova Solicitação': '#435A79', 'Em Aprovação': '#6366f1', 'Em Cotação': '#2563eb',
+  'Nova Solicitação': '#435A79', 'Em Cotação': '#2563eb', 'Em Aprovação': '#6366f1',
   'Comprado': '#059669', 'Em Rota': '#d97706', 'Em Serviço': '#ea580c',
   'Disponível para Retirada': '#64748b', 'Finalizado': '#5D7295', 'Cancelada': '#dc2626',
 };

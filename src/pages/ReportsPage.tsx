@@ -18,9 +18,11 @@ import { localDayOf } from '../lib/finance';
 const CAT = ['#435A79', '#059669', '#d97706', '#2563eb', '#dc2626', '#0891b2'];
 
 const STATUS_ORDER: Status[] = [
-  'Nova Solicitação', 'Em Aprovação', 'Em Cotação', 'Comprado',
+  'Nova Solicitação', 'Em Cotação', 'Em Aprovação', 'Comprado',
   'Em Rota', 'Em Serviço', 'Disponível para Retirada', 'Finalizado', 'Cancelada',
 ];
+// Posição de "Em Aprovação" no fluxo: tudo depois dela já passou pela aprovação.
+const APPROVAL_IDX = STATUS_ORDER.indexOf('Em Aprovação');
 const STATUS_COLORS: Record<string, string> = {
   'Nova Solicitação': '#435A79',
   'Em Aprovação': '#6366f1',
@@ -105,7 +107,7 @@ function isApproved(r: PurchaseRequest): boolean {
   if (r.status === 'Cancelada') return false;
   if (r.approvedBy) return true;
   if (r.history.some((h) => h.action.toLowerCase().includes('aprovad'))) return true;
-  return STATUS_ORDER.indexOf(r.status) > 1;
+  return STATUS_ORDER.indexOf(r.status) > APPROVAL_IDX;
 }
 function hasOpenObjection(r: PurchaseRequest): boolean {
   return r.items.some((i) => (i.objections ?? []).some((o) => !o.resolved));
@@ -119,7 +121,7 @@ function approvalHours(r: PurchaseRequest): number | null {
   // nunca foram aprovados.
   if (!isApproved(r)) return null;
   const entry = r.history.find((h) => h.action.toLowerCase().includes('aprovad') && h.to !== 'Cancelada')
-    ?? r.history.find((h) => h.to !== 'Cancelada' && (h.from === 'Em Aprovação' || (h.to && STATUS_ORDER.indexOf(h.to) > 1)));
+    ?? r.history.find((h) => h.to !== 'Cancelada' && (h.from === 'Em Aprovação' || (h.to && STATUS_ORDER.indexOf(h.to) > APPROVAL_IDX)));
   const end = r.approvedAt ?? entry?.date;
   if (!end) return null;
   const ms = new Date(end).getTime() - new Date(r.createdAt).getTime();

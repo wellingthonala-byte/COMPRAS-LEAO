@@ -57,18 +57,21 @@ export function canProjectInstallments(request: PurchaseRequest): boolean {
 /**
  * Trava financeira central: o pedido pode avançar (ou pular) de status?
  *
- * Um pedido em "Em Cotação" não pode sair de lá sem valor e condição de
- * pagamento preenchidos — senão o card avança sem nunca ter passado pela
- * janela de aprovação de valor. E qualquer pedido "Comprado" em diante que
- * já tenha valor+condição válidos (pedido legado ou editado fora do fluxo)
- * não pode seguir adiante sem a aprovação de valor do gestor, mesmo que já
- * tenha deixado "Em Cotação" há tempos. Compartilhada entre a UI (que
- * também mostra a mensagem) e os handlers do Kanban (defesa em profundidade
- * — a UI sozinha não é suficiente).
+ * A ordem do fluxo é Nova Solicitação → Em Cotação → Em Aprovação →
+ * Comprado. Um pedido em "Em Cotação" não pode sair de lá sem valor e
+ * condição de pagamento preenchidos (é o que a aprovação seguinte avalia).
+ * Um pedido em "Em Aprovação" não pode sair de lá sem a aprovação de valor
+ * do gestor. E qualquer pedido "Comprado" em diante que já tenha
+ * valor+condição válidos (pedido legado ou editado fora do fluxo) não pode
+ * seguir adiante sem a aprovação de valor, mesmo que já tenha passado por
+ * "Em Aprovação" há tempos. Compartilhada entre a UI (que também mostra a
+ * mensagem) e os handlers do Kanban (defesa em profundidade — a UI sozinha
+ * não é suficiente).
  */
 export function blocksAdvanceForValueApproval(request: PurchaseRequest): boolean {
   if (request.status === 'Cancelada' || request.valueApproval) return false;
-  return request.status === 'Em Cotação' || canProjectInstallments(request);
+  if (request.status === 'Em Cotação') return !canProjectInstallments(request);
+  return request.status === 'Em Aprovação' || canProjectInstallments(request);
 }
 
 /**

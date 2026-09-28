@@ -55,8 +55,8 @@ export interface PurchaseRequest {
   approvedAt?: string;
   /**
    * Segunda aprovação: o gestor aprova o VALOR cotado. É aqui que nasce o
-   * compromisso financeiro — a aprovação acima (approvedBy) é de mérito e
-   * acontece antes da cotação, quando o valor ainda não existe.
+   * compromisso financeiro — a aprovação acima (approvedBy) é de mérito.
+   * Ambas acontecem na etapa "Em Aprovação", depois da cotação.
    */
   valueApproval?: ValueApproval;
   cancelledBy?: string;
